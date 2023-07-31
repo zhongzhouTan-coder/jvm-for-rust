@@ -8,11 +8,11 @@ use clap::Parser;
 )]
 struct Args {
     /// Specifies a list of directories, JAR files, and ZIP archives to search for class files.
-    #[clap(long = "class-path")]
+    #[arg(long = "class-path")]
     classpath: std::path::PathBuf,
 
     /// Sets the fully qualified classname to execute.
-    #[clap(long = "class-name")]
+    #[arg(long = "class-name")]
     classname: String,
 }
 
