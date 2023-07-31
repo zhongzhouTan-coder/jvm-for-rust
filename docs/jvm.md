@@ -258,3 +258,35 @@ Each `class` file contains the definition of a single class, interface, or modul
   ```
 
   Each entry in the constant_pool table must begin with a 1-byte tag indicating the kind of constant denoted by the entry.
+
+### `FIELDS`
+
+Each field is described by a `field_info` structure.
+No two fields in one class file may have the same name and descriptor.
+
+```java
+field_info {
+    u2             access_flags;
+    u2             name_index;
+    u2             descriptor_index;
+    u2             attributes_count;
+    attribute_info attributes[attributes_count];
+}
+```
+
+### `Methods`
+
+Each method, including each instance initialization method and the class or interface initialization method is descried by a `method_info` structure.
+
+No two methods in one `class` file may have the same name and descriptor.
+
+```java
+method_info {
+    u2             access_flags;
+    u2             name_index;
+    u2             descriptor_index;
+    u2             attributes_count;
+    attribute_info attributes[attributes_count];
+}
+```
+
