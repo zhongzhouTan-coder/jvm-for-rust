@@ -289,6 +289,7 @@ method_info {
     attribute_info attributes[attributes_count];
 }
 ```
+
 ### `Attributes`
 
 `Attributes` are used in the `ClassFile`,`filed_info`, `method_info`, `Code_attributes`, and `record_component_info` structures of the `class` file format.
@@ -306,11 +307,12 @@ All attributes have the following general format:
 ### `Format Checking`
 
 When a prospective class file is loaded by the Java Virtual Machine, the Java Virtual Machine first ensures that the file has the basic format of a class file. This process is known as format checking. The checks are as follows:
-  - The first four bytes must contain the right magic number.
-  - All predefined attributesmust be of the proper length, except for StackMapTable, RuntimeVisibleAnnotations, RuntimeInvisibleAnnotations, RuntimeVisibleParameterAnnotations, RuntimeInvisibleParameterAnnotations, RuntimeVisibleTypeAnnotations, RuntimeInvisibleTypeAnnotations, and AnnotationDefault.
-  - The class file must not be truncated or have extra bytes at the end.
-  - The constant pool must satisfy the constraints documented throughout
-  - All field references and method references in the constant pool must have valid names, valid classes, and valid descriptors.
+
+- The first four bytes must contain the right magic number.
+- All predefined attributesmust be of the proper length, except for StackMapTable, RuntimeVisibleAnnotations, RuntimeInvisibleAnnotations, RuntimeVisibleParameterAnnotations, RuntimeInvisibleParameterAnnotations, RuntimeVisibleTypeAnnotations, RuntimeInvisibleTypeAnnotations, and AnnotationDefault.
+- The class file must not be truncated or have extra bytes at the end.
+- The constant pool must satisfy the constraints documented throughout
+- All field references and method references in the constant pool must have valid names, valid classes, and valid descriptors.
 
 ### `Constraints on Java Virtual Machine Code`
 
@@ -332,7 +334,7 @@ Link-time verification enhances the performance of the run-time interpreter. Exp
 
 ## Loading, Linking, and Initializing
 
-The Java Virtual Machine dynamically loads, links and initializes classes and interfaces. Loading is the process of finding the binary representation of a class or interface type with a particular name and creating a class or interface from that binary representation. Linking is the process of taking a class or interface and combining it into the run-time state of the Java Virtual Machine so that it can be executed. Initialization of a class or interface consists of executing the class or interface initialization method <clinit>
+The Java Virtual Machine dynamically loads, links and initializes classes and interfaces. Loading is the process of finding the binary representation of a class or interface type with a particular name and creating a class or interface from that binary representation. Linking is the process of taking a class or interface and combining it into the run-time state of the Java Virtual Machine so that it can be executed. Initialization of a class or interface consists of executing the class or interface initialization method `clinit`
 
 ### `The Run-Time Constant Pool`
 
