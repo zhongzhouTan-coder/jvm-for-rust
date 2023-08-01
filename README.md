@@ -5,7 +5,8 @@ project is to learning java jvm and also rust language.
 
 ## Main Features Road Map
 
-- [ ] *Command Line*
+- [x] *Command Line*
+  support classpath and classname
 - [ ] *Class Loader* - Implement a simple class loader to load Java class files into memory.
 - [ ] *Bytecode Interpreter* - Create a bytecode interpreter to execute Java bytecode. Interpretation is slower than Just-In-Time (JIT) compilation, but it simplifies the implementation.
 - [ ] *Runtime Data Area* - Design basic data structures for the runtime data area, including the method area and the heap.
