@@ -1,5 +1,7 @@
 use clap::Parser;
 
+mod classloader;
+
 #[derive(Parser, Debug, Default)]
 #[clap(
     author = "Tang xuan",
