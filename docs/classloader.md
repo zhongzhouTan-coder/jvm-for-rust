@@ -32,14 +32,15 @@ The initial class or interface is specified in an implementation-dependent manne
 ## What we need to do in Class Creation and Loading process
 
 Creation of a class or interface C denoted by the name N consists of the construction of an implementation-specific internal representation of C in the method area of the Java Virtual Machine
-1. Class or interface creation is triggered by another class or interface D, whose run-time constant pool symbolically references C by means of the name N. 
+
+1. Class or interface creation is triggered by another class or interface D, whose run-time constant pool symbolically references C by means of the name N.
 2. If N does not denote an array class, then the Java Virtual Machine relies on a class loader to locate a binary representation for a class or interface called N.
 3. Once a class loader has located a binary representation, it relies in turn on the Java Virtual Machine to derive the class or interface C from the binary representation, and then to create C in the method area.
 Note: Array classes do not have an external binary representation; they are created by the Java Virtual Machine via a different process.
 
 It should be clear that loading a class or interface is a joint effort between the Java Virtual Machine and a class loader (or multiple class loaders, if delegation occurs). The ultimate outcome of loading is that the Java Virtual Machine creates a class or interface in its method area, so it is often convenient to say that a class or interface is loaded and thereby created.
 
-## What is the pricinpals which need to satisfied when design the class laoder
+## What is the principals which need to satisfied when design the class loader
 
 1. Given the same name, a good class loader should always return the same Class object.
 2. If a class loader L1 delegates loading of a class C to another loader L2, then for any type T that occurs as the direct superclass or a direct superinterface of C, or as the type of a field in C, or as the type of a formal parameter of a method or constructor in C, or as a return type of a method in C, L1 and L2 should return the same Class object.
