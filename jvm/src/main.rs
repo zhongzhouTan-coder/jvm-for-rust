@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use clap::Parser;
 
 mod classloader;
+mod reader;
 
 #[derive(Parser, Debug, Default)]
 #[clap(
