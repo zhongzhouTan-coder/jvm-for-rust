@@ -37,10 +37,16 @@ fn run_jvm(classpath: std::path::PathBuf, classname: &str) {
         Some(Box::new(bootstrap_loader)),
     );
     let application_class_path = classpath;
-    let application_class_loader = classloader::loader::ClassLoader::new(
+    let mut application_class_loader = classloader::loader::ClassLoader::new(
         application_class_path,
         Some(Box::new(extension_class_loader)),
     );
     println!("Running JVM with classpath: {:?}", application_class_loader);
     println!("Executing Java class: {}", classname);
+    match application_class_loader.load_class(classname) {
+        Some(bytes) => {
+            println!("Class loaded successfully: {} {:?}", classname, bytes);
+        }
+        None => println!("Class not found: {}", classname),
+    }
 }
