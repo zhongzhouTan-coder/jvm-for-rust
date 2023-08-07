@@ -1,5 +1,5 @@
 use core::num;
-use std::{default, str::FromStr};
+use std::{default, f32::consts::E, str::FromStr};
 
 use super::{
     buffer::{Buffer, BufferError},
@@ -33,6 +33,8 @@ impl<'a> ClassReader<'a> {
         self.read_minor_version()?;
         self.read_major_version()?;
         self.read_const_pool_count()?;
+        self.read_const_pool()?;
+        self.read_access_flags()?;
         Ok(self.class_file)
     }
 
@@ -86,100 +88,201 @@ impl<'a> ClassReader<'a> {
     fn read_const_pool(&mut self) -> Result<()> {
         let count = self.class_file.constant_pool_count;
         for _ in 0..count {
-            match self.buffer.read_u8()? {
+            let tag = self.buffer.read_u8()?;
+            let constant_info = match tag {
                 1 => self.read_utf8()?,
                 3 => self.read_integer()?,
                 4 => self.read_float()?,
+                5 => self.read_long()?,
+                6 => self.read_double()?,
+                7 => self.read_class()?,
+                8 => self.read_string()?,
+                9 => self.read_field_ref()?,
+                10 => self.read_method_ref()?,
+                11 => self.read_interface_method_ref()?,
+                12 => self.read_name_and_type()?,
+                15 => self.read_method_handle()?,
+                16 => self.read_method_type()?,
+                17 => self.read_dynamic()?,
+                18 => self.read_invoke_dynamic()?,
+                19 => self.read_module()?,
                 _ => return Err(ClassReaderError::InvalidClassData),
-            }
+            };
+            self.class_file
+                .constant_pool
+                .push(ConstantPoolInfo::new(tag, constant_info));
         }
         Ok(())
     }
 
-    fn read_utf8(&mut self) -> Result<()> {
+    fn read_utf8(&mut self) -> Result<ConstantInfo> {
         let length = self.buffer.read_u16()?;
         match self.buffer.read_utf8(length.try_into().unwrap()) {
-            Ok(content) => {
-                let utf8_info = ConstantPoolInfo::new(1, ConstantInfo::Utf8(length, content));
-                self.class_file.constant_pool.push(utf8_info);
-                Ok(())
-            }
+            Ok(content) => Ok(ConstantInfo::Utf8(length, content)),
             Err(err) => Err(err.into()),
         }
     }
 
-    fn read_integer(&mut self) -> Result<()> {
+    fn read_integer(&mut self) -> Result<ConstantInfo> {
         match self.buffer.read_integer() {
-            Ok(number) => {
-                let integer_info = ConstantPoolInfo::new(3, ConstantInfo::Integer(number));
-                self.class_file.constant_pool.push(integer_info);
-                Ok(())
-            }
+            Ok(number) => Ok(ConstantInfo::Integer(number)),
             Err(err) => Err(err.into()),
         }
     }
 
-    fn read_float(&mut self) -> Result<()> {
+    fn read_float(&mut self) -> Result<ConstantInfo> {
         match self.buffer.read_float() {
-            Ok(float) => {
-                let float_info = ConstantPoolInfo::new(4, ConstantInfo::Float(float));
-                self.class_file.constant_pool.push(float_info);
-                Ok(())
-            }
+            Ok(float) => Ok(ConstantInfo::Float(float)),
             Err(err) => Err(err.into()),
         }
     }
 
-    fn read_long(&mut self) -> Result<()> {
+    fn read_long(&mut self) -> Result<ConstantInfo> {
         match self.buffer.read_long() {
-            Ok(long) => {
-                let long_info = ConstantPoolInfo::new(5, ConstantInfo::Long(long));
-                self.class_file.constant_pool.push(long_info);
-                Ok(())
-            }
+            Ok(long) => Ok(ConstantInfo::Long(long)),
             Err(err) => Err(err.into()),
         }
     }
 
-    fn read_double(&mut self) -> Result<()> {
+    fn read_double(&mut self) -> Result<ConstantInfo> {
         match self.buffer.read_double() {
-            Ok(double) => {
-                let double_info = ConstantPoolInfo::new(6, ConstantInfo::Double(double));
-                self.class_file.constant_pool.push(double_info);
-                Ok(())
-            }
+            Ok(double) => Ok(ConstantInfo::Double(double)),
             Err(err) => Err(err.into()),
         }
     }
 
-    fn read_class(&mut self) -> Result<()> {
+    fn read_class(&mut self) -> Result<ConstantInfo> {
         match self.buffer.read_u16() {
-            Ok(name_index) => {
-                let class_info = ConstantPoolInfo::new(7, ConstantInfo::Class(name_index));
-                self.class_file.constant_pool.push(class_info);
-                Ok(())
-            }
+            Ok(name_index) => Ok(ConstantInfo::Class(name_index)),
             Err(err) => Err(err.into()),
         }
     }
 
-    fn read_string(&mut self) -> Result<()> {
+    fn read_string(&mut self) -> Result<ConstantInfo> {
         match self.buffer.read_u16() {
-            Ok(string_index) => {
-                let string_info = ConstantPoolInfo::new(8, ConstantInfo::String(string_index));
-                self.class_file.constant_pool.push(string_info);
-                Ok(())
-            }
+            Ok(string_index) => Ok(ConstantInfo::String(string_index)),
             Err(err) => Err(err.into()),
         }
     }
 
-    fn read_field_ref(&mut self) -> Result<()> {
+    fn read_field_ref(&mut self) -> Result<ConstantInfo> {
         let class_index = self.buffer.read_u16()?;
         let name_and_type_index = self.buffer.read_u16()?;
-        let field_ref_info =
-            ConstantPoolInfo::new(9, ConstantInfo::FieldRef(class_index, name_and_type_index));
-        self.class_file.constant_pool.push(field_ref_info);
+        Ok(ConstantInfo::FieldRef(class_index, name_and_type_index))
+    }
+
+    fn read_method_ref(&mut self) -> Result<ConstantInfo> {
+        let class_index = self.buffer.read_u16()?;
+        let name_and_type_index = self.buffer.read_u16()?;
+        Ok(ConstantInfo::MethodRef(class_index, name_and_type_index))
+    }
+
+    fn read_interface_method_ref(&mut self) -> Result<ConstantInfo> {
+        let class_index = self.buffer.read_u16()?;
+        let name_and_type_index = self.buffer.read_u16()?;
+        Ok(ConstantInfo::InterfaceMethodRef(
+            class_index,
+            name_and_type_index,
+        ))
+    }
+
+    fn read_name_and_type(&mut self) -> Result<ConstantInfo> {
+        let name_index = self.buffer.read_u16()?;
+        let descriptor_index = self.buffer.read_u16()?;
+        Ok(ConstantInfo::NameAndType(name_index, descriptor_index))
+    }
+
+    fn read_method_handle(&mut self) -> Result<ConstantInfo> {
+        let reference_kind = self.buffer.read_u8()?;
+        let reference_index = self.buffer.read_u16()?;
+        Ok(ConstantInfo::MethodHandle(reference_kind, reference_index))
+    }
+
+    fn read_method_type(&mut self) -> Result<ConstantInfo> {
+        match self.buffer.read_u16() {
+            Ok(index) => Ok(ConstantInfo::MethodType(index)),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    fn read_dynamic(&mut self) -> Result<ConstantInfo> {
+        let bootstrap_method_attr_index = self.buffer.read_u16()?;
+        let name_and_type_index = self.buffer.read_u16()?;
+        Ok(ConstantInfo::Dynamic(
+            bootstrap_method_attr_index,
+            name_and_type_index,
+        ))
+    }
+
+    fn read_invoke_dynamic(&mut self) -> Result<ConstantInfo> {
+        let bootstrap_method_attr_index = self.buffer.read_u16()?;
+        let name_and_type_index = self.buffer.read_u16()?;
+        Ok(ConstantInfo::InvokeDynamic(
+            bootstrap_method_attr_index,
+            name_and_type_index,
+        ))
+    }
+
+    fn read_module(&mut self) -> Result<ConstantInfo> {
+        match self.buffer.read_u16() {
+            Ok(name_index) => Ok(ConstantInfo::Module(name_index)),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    fn read_package(&mut self) -> Result<ConstantInfo> {
+        match self.buffer.read_u16() {
+            Ok(name_index) => Ok(ConstantInfo::Package(name_index)),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    fn read_access_flags(&mut self) -> Result<()> {
+        match self.buffer.read_u16() {
+            Ok(flags) => {
+                self.class_file.access_flags = flags;
+                Ok(())
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    fn read_this_class(&mut self) -> Result<()> {
+        match self.buffer.read_u16() {
+            Ok(this_class) => {
+                self.class_file.this_class = this_class;
+                Ok(())
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    fn read_super_class(&mut self) -> Result<()> {
+        match self.buffer.read_u16() {
+            Ok(super_class) => {
+                self.class_file.super_class = super_class;
+                Ok(())
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    fn read_interfaces_count(&mut self) -> Result<()> {
+        match self.buffer.read_u16() {
+            Ok(interfaces_count) => {
+                self.class_file.interfaces_count = interfaces_count;
+                Ok(())
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    fn read_interfaces(&mut self) -> Result<()> {
+        let interfaces_count = self.class_file.interfaces_count;
+        self.class_file.interfaces = (0..interfaces_count)
+            .map(|_| self.buffer.read_u16())
+            .map(|result| result.map_err(|err| err.into()))
+            .collect::<Result<Vec<u16>>>()?;
         Ok(())
     }
 }
