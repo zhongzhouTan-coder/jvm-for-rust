@@ -3,6 +3,8 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
+use crate::reader::class_reader::ClassReader;
+
 mod classloader;
 mod reader;
 
@@ -47,6 +49,9 @@ fn run_jvm(classpath: std::path::PathBuf, classname: &str) {
     match application_class_loader.load_class(classname) {
         Some(bytes) => {
             println!("Class loaded successfully: {} {:?}", classname, bytes);
+            let class_reader = ClassReader::new(&bytes);
+            let class_file = class_reader.read().unwrap();
+            println!("Class file is: {:?}", class_file);
         }
         None => println!("Class not found: {}", classname),
     }
