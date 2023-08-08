@@ -1,5 +1,6 @@
 use core::num;
 use std::{default, f32::consts::E, str::FromStr};
+use crate::reader::field_info::FieldInfo;
 
 use super::{
     buffer::{Buffer, BufferError},
@@ -35,6 +36,11 @@ impl<'a> ClassReader<'a> {
         self.read_const_pool_count()?;
         self.read_const_pool()?;
         self.read_access_flags()?;
+        self.read_this_class()?;
+        self.read_super_class()?;
+        self.read_interfaces_count()?;
+        self.read_interfaces()?;
+        self.read_fields_count()?;
         Ok(self.class_file)
     }
 
@@ -86,7 +92,7 @@ impl<'a> ClassReader<'a> {
     }
 
     fn read_const_pool(&mut self) -> Result<()> {
-        let count = self.class_file.constant_pool_count;
+        let count = self.class_file.constant_pool_count - 1;
         for _ in 0..count {
             let tag = self.buffer.read_u8()?;
             let constant_info = match tag {
@@ -283,6 +289,29 @@ impl<'a> ClassReader<'a> {
             .map(|_| self.buffer.read_u16())
             .map(|result| result.map_err(|err| err.into()))
             .collect::<Result<Vec<u16>>>()?;
+        Ok(())
+    }
+
+    fn read_fields_count(&mut self) -> Result<()> {
+        match self.buffer.read_u16() {
+            Ok(fields_count) => {
+                self.class_file.fields_count = fields_count;
+                Ok(())
+            },
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    fn read_fields(&mut self) -> Result<()> {
+        let fields_count = self.class_file.fields_count;
+        for _ in 0..fields_count {
+            let access_flags = self.buffer.read_u16()?;
+            let name_index = self.buffer.read_u16()?;
+            let descriptor_idnex = self.buffer.read_u16()?;
+            let attributes_count = self.buffer.read_u16()?;
+            let attributes = self.read_attributes()?;
+            self.class_file.fields.push(FieldInfo::new(access_flags, name_index, descriptor_idnex, attributes_count, attributes));
+        }
         Ok(())
     }
 }
