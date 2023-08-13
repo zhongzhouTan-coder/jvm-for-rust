@@ -1,12 +1,6 @@
 #[derive(Debug)]
-pub struct ConstantPoolInfo {
-    tag: u8,
-    info: ConstantInfo,
-}
-
-#[derive(Debug)]
 pub enum ConstantInfo {
-    Utf8(u16, String),
+    Utf8(String),
     Integer(i32),
     Float(f32),
     Long(i64),
@@ -23,10 +17,4 @@ pub enum ConstantInfo {
     InvokeDynamic(u16, u16),
     Module(u16),
     Package(u16),
-}
-
-impl ConstantPoolInfo {
-    pub fn new(tag: u8, info: ConstantInfo) -> Self {
-        ConstantPoolInfo { tag, info }
-    }
 }

@@ -68,6 +68,10 @@ impl<'a> Buffer<'a> {
         self.read_bytes(std::mem::size_of::<i64>())
             .map(|bytes| i64::from_be_bytes(bytes.try_into().unwrap()))
     }
+
+    pub fn has_unread_data(&self) -> Result<bool> {
+        Ok(self.position < self.buffer.len())
+    }
 }
 
 #[cfg(test)]

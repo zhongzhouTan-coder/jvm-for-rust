@@ -1,11 +1,11 @@
 use crate::reader::field_info::FieldInfo;
-use std::str::FromStr;
 
 use super::{
     attribute_info::AttributeInfo,
     buffer::{Buffer, BufferError},
     class_file::ClassFile,
-    constant_pool_info::{ConstantInfo, ConstantPoolInfo},
+    class_file_version::ClassFileVersion,
+    constant_info::ConstantInfo,
     method_info::MethodInfo,
 };
 
@@ -19,7 +19,7 @@ type Result<T> = std::result::Result<T, ClassReaderError>;
 #[derive(Debug, PartialEq, Eq)]
 pub enum ClassReaderError {
     InvalidClassData,
-    UnsupportedVersion(String),
+    InvalidClassFormat(String),
 }
 
 impl<'a> ClassReader<'a> {
@@ -31,9 +31,8 @@ impl<'a> ClassReader<'a> {
     }
 
     pub fn read(mut self) -> Result<ClassFile> {
-        self.read_magic_number()?;
-        self.read_minor_version()?;
-        self.read_major_version()?;
+        self.check_magic_number()?;
+        self.read_and_check_version()?;
         self.read_const_pool_count()?;
         self.read_const_pool()?;
         self.read_access_flags()?;
@@ -47,41 +46,26 @@ impl<'a> ClassReader<'a> {
         self.read_methods()?;
         self.read_attributes_count()?;
         self.read_attributes()?;
+        self.check_trunked_data()?;
         Ok(self.class_file)
     }
 
-    fn read_magic_number(&mut self) -> Result<()> {
+    fn check_magic_number(&mut self) -> Result<()> {
         match self.buffer.read_u32() {
-            Ok(0xCAFEBABE) => {
-                self.class_file.magic = 0xCAFEBABE;
-                Ok(())
-            }
-            Ok(_) => Err(ClassReaderError::InvalidClassData),
+            Ok(0xCAFEBABE) => Ok(()),
+            Ok(_) => Err(ClassReaderError::InvalidClassFormat(String::from(
+                "Magic number check error!",
+            ))),
             Err(err) => Err(err.into()),
         }
     }
 
-    fn read_minor_version(&mut self) -> Result<()> {
+    fn read_and_check_version(&mut self) -> Result<()> {
+        self.buffer.read_u16()?;
         match self.buffer.read_u16() {
             Ok(version) => {
-                self.class_file.minor_version = version;
+                self.class_file.major_version = ClassFileVersion::from_u16(version);
                 Ok(())
-            }
-            Err(err) => Err(err.into()),
-        }
-    }
-
-    fn read_major_version(&mut self) -> Result<()> {
-        match self.buffer.read_u16() {
-            Ok(version) => {
-                if version > 61 {
-                    Err(ClassReaderError::UnsupportedVersion(
-                        String::from_str("Only support JDK 17 or below.").unwrap(),
-                    ))
-                } else {
-                    self.class_file.major_version = version;
-                    Ok(())
-                }
             }
             Err(err) => Err(err.into()),
         }
@@ -121,9 +105,7 @@ impl<'a> ClassReader<'a> {
                 20 => self.read_package()?,
                 _ => return Err(ClassReaderError::InvalidClassData),
             };
-            self.class_file
-                .constant_pool
-                .push(ConstantPoolInfo::new(tag, constant_info));
+            self.class_file.constant_pool.push(constant_info);
         }
         Ok(())
     }
@@ -131,7 +113,7 @@ impl<'a> ClassReader<'a> {
     fn read_utf8(&mut self) -> Result<ConstantInfo> {
         let length = self.buffer.read_u16()?;
         match self.buffer.read_utf8(length.try_into().unwrap()) {
-            Ok(content) => Ok(ConstantInfo::Utf8(length, content)),
+            Ok(content) => Ok(ConstantInfo::Utf8(content)),
             Err(err) => Err(err.into()),
         }
     }
@@ -312,17 +294,25 @@ impl<'a> ClassReader<'a> {
     fn read_fields(&mut self) -> Result<()> {
         let fields_count = self.class_file.fields_count;
         for _ in 0..fields_count {
-            let access_flags = self.buffer.read_u16()?;
+            let access_flag = self.buffer.read_u16()?;
             let name_index = self.buffer.read_u16()?;
+            let name = match self.class_file.get_constant_info(name_index) {
+                ConstantInfo::Utf8(content) => content.clone(),
+                _ => panic!("Invalid name index for field - {}.", name_index),
+            };
             let descriptor_index = self.buffer.read_u16()?;
+            let descriptor = match self.class_file.get_constant_info(descriptor_index) {
+                ConstantInfo::Utf8(content) => content.clone(),
+                _ => panic!("Invalid name index for descriptor - {}.", descriptor_index),
+            };
             let attributes_count = self.buffer.read_u16()?;
             let attributes = (0..attributes_count)
                 .map(|_| self.read_attribute())
                 .collect::<Result<Vec<AttributeInfo>>>()?;
             self.class_file.fields.push(FieldInfo::new(
-                access_flags,
-                name_index,
-                descriptor_index,
+                access_flag,
+                name,
+                descriptor,
                 attributes_count,
                 attributes,
             ));
@@ -332,13 +322,17 @@ impl<'a> ClassReader<'a> {
 
     fn read_attribute(&mut self) -> Result<AttributeInfo> {
         let attribute_name_index = self.buffer.read_u16()?;
+        let attribute_name = match self.class_file.get_constant_info(attribute_name_index) {
+            ConstantInfo::Utf8(content) => content,
+            _ => panic!("Invalid name index, not a utf8 string."),
+        };
         let attribute_length = self.buffer.read_u32()?;
         let info = (0..attribute_length)
             .map(|_| self.buffer.read_u8())
             .map(|result| result.map_err(|err| err.into()))
             .collect::<Result<Vec<u8>>>()?;
         Ok(AttributeInfo::new(
-            attribute_name_index,
+            attribute_name.clone(),
             attribute_length,
             info,
         ))
@@ -357,17 +351,25 @@ impl<'a> ClassReader<'a> {
     fn read_methods(&mut self) -> Result<()> {
         let methods_count = self.class_file.methods_count;
         for _ in 0..methods_count {
-            let access_flags = self.buffer.read_u16()?;
+            let access_flag = self.buffer.read_u16()?;
             let name_index = self.buffer.read_u16()?;
-            let descriptor_index = self.buffer.read_u16()?;
+            let name = match self.class_file.get_constant_info(name_index) {
+                ConstantInfo::Utf8(content) => content.clone(),
+                _ => panic!("Invalid method name index - {}.", name_index),
+            };
+            let descriptor_index = self.buffer.read_u16()? - 1;
+            let descriptor = match self.class_file.get_constant_info(descriptor_index) {
+                ConstantInfo::Utf8(content) => content.clone(),
+                _ => panic!("Invalid method descriptor index - {}.", descriptor_index),
+            };
             let attributes_count = self.buffer.read_u16()?;
             let attributes = (0..attributes_count)
                 .map(|_| self.read_attribute())
                 .collect::<Result<Vec<AttributeInfo>>>()?;
             self.class_file.methods.push(MethodInfo::new(
-                access_flags,
-                name_index,
-                descriptor_index,
+                access_flag,
+                name,
+                descriptor,
                 attributes_count,
                 attributes,
             ));
@@ -392,6 +394,16 @@ impl<'a> ClassReader<'a> {
             self.class_file.attributes.push(attribute);
         }
         Ok(())
+    }
+
+    fn check_trunked_data(&self) -> Result<()> {
+        if self.buffer.has_unread_data()? {
+            Err(ClassReaderError::InvalidClassFormat(String::from(
+                "Read trunked class file data!",
+            )))
+        } else {
+            Ok(())
+        }
     }
 }
 

@@ -14,6 +14,12 @@ pub enum ClassAccessFlag {
     MODULE = 0x8000,
 }
 
+impl Default for ClassAccessFlag {
+    fn default() -> Self {
+        Self::PUBLIC
+    }
+}
+
 impl ops::BitOr for ClassAccessFlag {
     type Output = u16;
     fn bitor(self, rhs: Self) -> Self::Output {
