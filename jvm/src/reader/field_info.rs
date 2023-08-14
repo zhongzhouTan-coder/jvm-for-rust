@@ -1,29 +1,24 @@
-use crate::reader::attribute_info::AttributeInfo;
-
-use super::field_access_flag::FieldAccessFlag;
+use crate::reader::attribute::Attribute;
 
 #[derive(Debug)]
 pub struct FieldInfo {
-    access_flag: u16,
+    access_flags: u16,
     name: String,
     descriptor: String,
-    attributes_count: u16,
-    attributes: Vec<AttributeInfo>,
+    attributes: Vec<Attribute>,
 }
 
 impl FieldInfo {
     pub fn new(
-        access_flag: u16,
+        access_flags: u16,
         name: String,
         descriptor: String,
-        attributes_count: u16,
-        attributes: Vec<AttributeInfo>,
+        attributes: Vec<Attribute>,
     ) -> FieldInfo {
         FieldInfo {
-            access_flag,
+            access_flags,
             name,
             descriptor,
-            attributes_count,
             attributes,
         }
     }

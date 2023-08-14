@@ -1,7 +1,6 @@
 use super::{
-    attribute_info::AttributeInfo, class_file_version::ClassFileVersion,
-    constant_info::ConstantInfo, field_info::FieldInfo, method_info::MethodInfo,
-    type_conversion::ToUsizeSafe,
+    attribute::Attribute, class_file_version::ClassFileVersion, constant_info::ConstantInfo,
+    field_info::FieldInfo, method_info::MethodInfo, type_conversion::ToUsizeSafe,
 };
 
 #[derive(Debug, Default)]
@@ -19,7 +18,7 @@ pub struct ClassFile {
     pub methods_count: u16,
     pub methods: Vec<MethodInfo>,
     pub attributes_count: u16,
-    pub attributes: Vec<AttributeInfo>,
+    pub attributes: Vec<Attribute>,
 }
 
 impl ClassFile {

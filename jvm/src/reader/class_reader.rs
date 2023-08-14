@@ -1,7 +1,7 @@
 use crate::reader::field_info::FieldInfo;
 
 use super::{
-    attribute_info::AttributeInfo,
+    attribute::Attribute,
     buffer::{Buffer, BufferError},
     class_file::ClassFile,
     class_file_version::ClassFileVersion,
@@ -294,7 +294,7 @@ impl<'a> ClassReader<'a> {
     fn read_fields(&mut self) -> Result<()> {
         let fields_count = self.class_file.fields_count;
         for _ in 0..fields_count {
-            let access_flag = self.buffer.read_u16()?;
+            let access_flags = self.buffer.read_u16()?;
             let name_index = self.buffer.read_u16()?;
             let name = match self.class_file.get_constant_info(name_index) {
                 ConstantInfo::Utf8(content) => content.clone(),
@@ -308,34 +308,26 @@ impl<'a> ClassReader<'a> {
             let attributes_count = self.buffer.read_u16()?;
             let attributes = (0..attributes_count)
                 .map(|_| self.read_attribute())
-                .collect::<Result<Vec<AttributeInfo>>>()?;
-            self.class_file.fields.push(FieldInfo::new(
-                access_flag,
-                name,
-                descriptor,
-                attributes_count,
-                attributes,
-            ));
+                .collect::<Result<Vec<Attribute>>>()?;
+            self.class_file
+                .fields
+                .push(FieldInfo::new(access_flags, name, descriptor, attributes));
         }
         Ok(())
     }
 
-    fn read_attribute(&mut self) -> Result<AttributeInfo> {
+    fn read_attribute(&mut self) -> Result<Attribute> {
         let attribute_name_index = self.buffer.read_u16()?;
         let attribute_name = match self.class_file.get_constant_info(attribute_name_index) {
-            ConstantInfo::Utf8(content) => content,
-            _ => panic!("Invalid name index, not a utf8 string."),
+            ConstantInfo::Utf8(content) => content.clone(),
+            _ => panic!("Invalid attribute name index - {}.", attribute_name_index),
         };
         let attribute_length = self.buffer.read_u32()?;
         let info = (0..attribute_length)
             .map(|_| self.buffer.read_u8())
             .map(|result| result.map_err(|err| err.into()))
             .collect::<Result<Vec<u8>>>()?;
-        Ok(AttributeInfo::new(
-            attribute_name.clone(),
-            attribute_length,
-            info,
-        ))
+        Ok(Attribute::new(attribute_name, info))
     }
 
     fn read_methods_count(&mut self) -> Result<()> {
@@ -351,13 +343,13 @@ impl<'a> ClassReader<'a> {
     fn read_methods(&mut self) -> Result<()> {
         let methods_count = self.class_file.methods_count;
         for _ in 0..methods_count {
-            let access_flag = self.buffer.read_u16()?;
+            let access_flags = self.buffer.read_u16()?;
             let name_index = self.buffer.read_u16()?;
             let name = match self.class_file.get_constant_info(name_index) {
                 ConstantInfo::Utf8(content) => content.clone(),
                 _ => panic!("Invalid method name index - {}.", name_index),
             };
-            let descriptor_index = self.buffer.read_u16()? - 1;
+            let descriptor_index = self.buffer.read_u16()?;
             let descriptor = match self.class_file.get_constant_info(descriptor_index) {
                 ConstantInfo::Utf8(content) => content.clone(),
                 _ => panic!("Invalid method descriptor index - {}.", descriptor_index),
@@ -365,9 +357,9 @@ impl<'a> ClassReader<'a> {
             let attributes_count = self.buffer.read_u16()?;
             let attributes = (0..attributes_count)
                 .map(|_| self.read_attribute())
-                .collect::<Result<Vec<AttributeInfo>>>()?;
+                .collect::<Result<Vec<Attribute>>>()?;
             self.class_file.methods.push(MethodInfo::new(
-                access_flag,
+                access_flags,
                 name,
                 descriptor,
                 attributes_count,

@@ -1,24 +1,24 @@
-use super::{attribute_info::AttributeInfo, method_access_flag::MethodAccessFlag};
+use super::attribute::Attribute;
 
 #[derive(Debug)]
 pub struct MethodInfo {
-    access_flag: u16,
-    name: String,
-    descriptor: String,
-    attributes_count: u16,
-    attributes: Vec<AttributeInfo>,
+    pub access_flags: u16,
+    pub name: String,
+    pub descriptor: String,
+    pub attributes_count: u16,
+    pub attributes: Vec<Attribute>,
 }
 
 impl MethodInfo {
     pub fn new(
-        access_flag: u16,
+        access_flags: u16,
         name: String,
         descriptor: String,
         attributes_count: u16,
-        attributes: Vec<AttributeInfo>,
+        attributes: Vec<Attribute>,
     ) -> MethodInfo {
         MethodInfo {
-            access_flag,
+            access_flags,
             name,
             descriptor,
             attributes_count,
