@@ -1,13 +1,17 @@
 # Project purpose
 
 This is just a project for learning purpose, and the main goal of this
-project is to learning java jvm and also rust language.
+project is to learn java jvm and also rust language.
+
+## Reference
+
+[Java SE 17 Edition](https://docs.oracle.com/javase/specs/jvms/se17/html/index.html)
 
 ## Main Features Road Map
 
 - [x] *Command Line*
   support classpath and classname
-- [ ] *Class Loader* - Implement a simple class loader to load Java class files into memory.
+- [x] *Class Loader* - Implement a simple class loader to load Java class files into memory.
 - [ ] *Bytecode Interpreter* - Create a bytecode interpreter to execute Java bytecode. Interpretation is slower than Just-In-Time (JIT) compilation, but it simplifies the implementation.
 - [ ] *Runtime Data Area* - Design basic data structures for the runtime data area, including the method area and the heap.
 - [ ] *Bytecode Execution Engine* - Implement the core of the JVM, the bytecode execution engine. This engine interprets Java bytecode and executes the corresponding instructions.
