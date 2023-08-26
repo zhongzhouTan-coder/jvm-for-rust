@@ -7,6 +7,7 @@ use super::{
     class_file_version::ClassFileVersion,
     constant_info::ConstantInfo,
     method_info::MethodInfo,
+    type_conversion::ToUsizeSafe,
 };
 
 pub struct ClassReader<'a> {
@@ -318,16 +319,11 @@ impl<'a> ClassReader<'a> {
 
     fn read_attribute(&mut self) -> Result<Attribute> {
         let attribute_name_index = self.buffer.read_u16()?;
-        let attribute_name = match self.class_file.get_constant_info(attribute_name_index) {
-            ConstantInfo::Utf8(content) => content.clone(),
-            _ => panic!("Invalid attribute name index - {}.", attribute_name_index),
-        };
         let attribute_length = self.buffer.read_u32()?;
-        let info = (0..attribute_length)
-            .map(|_| self.buffer.read_u8())
-            .map(|result| result.map_err(|err| err.into()))
-            .collect::<Result<Vec<u8>>>()?;
-        Ok(Attribute::new(attribute_name, info))
+        let info = self
+            .buffer
+            .read_vec_u8(attribute_length.into_usize_safe())?;
+        Ok(Attribute::new(attribute_name_index, attribute_length, info))
     }
 
     fn read_methods_count(&mut self) -> Result<()> {

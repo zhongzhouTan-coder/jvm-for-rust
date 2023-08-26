@@ -3,7 +3,7 @@ pub struct Buffer<'a> {
     position: usize,
 }
 
-/// Errors related to reading from a [Buffer]
+/// Errors related to reading from a Buffer
 #[derive(Debug, PartialEq)]
 pub enum BufferError {
     OutBoundaryOfData,
@@ -27,6 +27,10 @@ impl<'a> Buffer<'a> {
             self.position += size;
             Ok(slice)
         }
+    }
+
+    pub fn read_vec_u8(&mut self, size: usize) -> Result<Vec<u8>> {
+        self.read_bytes(size).map(|bytes| bytes.to_vec())
     }
 
     pub fn read_u8(&mut self) -> Result<u8> {

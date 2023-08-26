@@ -1,12 +1,11 @@
 pub mod attribute;
-pub mod attribute_info;
+pub mod attributes;
 pub mod buffer;
 pub mod class_access_flag;
 pub mod class_file;
 pub mod class_file_version;
 pub mod class_reader;
 pub mod constant_info;
-pub mod exception_table;
 pub mod field_access_flag;
 pub mod field_info;
 pub mod method_access_flag;
