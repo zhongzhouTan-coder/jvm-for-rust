@@ -1,9 +1,3 @@
-use super::{
-    attributes::{attribute_error::AttributeError, attribute_trait::AttributeTrait},
-    buffer::Buffer,
-    type_conversion::ToUsizeSafe,
-};
-
 #[derive(Debug)]
 pub struct Attribute {
     attribute_name_index: u16,
@@ -18,22 +12,6 @@ impl Attribute {
             attribute_length,
             info,
         }
-    }
-}
-
-impl AttributeTrait for Attribute {
-    fn decode_attribute(buffer: &mut Buffer) -> Result<Self, AttributeError>
-    where
-        Self: Sized,
-    {
-        let attribute_name_index = buffer.read_u16()?;
-        let attribute_length = buffer.read_u32()?;
-        let info = buffer.read_vec_u8(attribute_length.into_usize_safe())?;
-        Ok(Attribute {
-            attribute_name_index,
-            attribute_length,
-            info,
-        })
     }
 }
 

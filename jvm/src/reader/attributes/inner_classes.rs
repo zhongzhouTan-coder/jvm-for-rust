@@ -1,3 +1,5 @@
+use std::ops;
+
 use crate::reader::buffer::Buffer;
 
 use super::{attribute_error::AttributeError, attribute_trait::AttributeTrait};
@@ -45,5 +47,28 @@ impl AttributeTrait for Classes {
             inner_name_index,
             inner_class_access_flags,
         })
+    }
+}
+
+#[repr(u16)]
+#[allow(non_camel_case_types)]
+pub enum InnerClassAccessFlags {
+    PUBLIC = 0x0001u16,
+    PRIVATE = 0x0002u16,
+    PROTECTED = 0x0004u16,
+    STATIC = 0x0008u16,
+    FINAL = 0x0010u16,
+    INTERFACE = 0x0200u16,
+    ABSTRACT = 0x0400u16,
+    SYNTHETIC = 0x1000u16,
+    ANNOTATION = 0x2000u16,
+    ENUM = 0x4000u16,
+}
+
+impl ops::BitOr for InnerClassAccessFlags {
+    type Output = u16;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self as u16 | rhs as u16
     }
 }

@@ -1,80 +1,99 @@
 pub struct Buffer<'a> {
     buffer: &'a [u8],
-    position: usize,
+    buffer_start: usize,
+    buffer_end: usize,
+    current: usize,
+    source: &'a str,
 }
-
-/// Errors related to reading from a Buffer
-#[derive(Debug, PartialEq)]
-pub enum BufferError {
-    OutBoundaryOfData,
-}
-
-type Result<T> = std::result::Result<T, BufferError>;
 
 impl<'a> Buffer<'a> {
-    pub fn new(data: &'a [u8]) -> Self {
+    pub fn new(buffer: &'a [u8], length: usize, source: &'a str) -> Self {
         Buffer {
-            buffer: data,
-            position: 0,
+            buffer,
+            buffer_start: 0,
+            buffer_end: length,
+            current: 0,
+            source,
         }
     }
 
-    fn read_bytes(&mut self, size: usize) -> Result<&'a [u8]> {
-        if self.position + size > self.buffer.len() {
-            Err(BufferError::OutBoundaryOfData)
-        } else {
-            let slice = &self.buffer[self.position..self.position + size];
-            self.position += size;
-            Ok(slice)
-        }
+    pub fn length(&self) -> usize {
+        self.buffer_end - self.buffer_start
     }
 
-    pub fn read_vec_u8(&mut self, size: usize) -> Result<Vec<u8>> {
-        self.read_bytes(size).map(|bytes| bytes.to_vec())
+    pub fn source(&self) -> &str {
+        self.source
     }
 
-    pub fn read_u8(&mut self) -> Result<u8> {
-        self.read_bytes(std::mem::size_of::<u8>())
-            .map(|bytes| u8::from_be_bytes(bytes.try_into().unwrap()))
+    pub fn get_u8_fast(&mut self) -> u8 {
+        self.current += 1;
+        self.buffer[self.current - 1]
     }
 
-    pub fn read_u16(&mut self) -> Result<u16> {
-        self.read_bytes(std::mem::size_of::<u16>())
-            .map(|bytes| u16::from_be_bytes(bytes.try_into().unwrap()))
+    pub fn get_u8_array_fast(&mut self, length: usize) -> &[u8] {
+        self.current += length;
+        &self.buffer[self.current - length..self.current]
     }
 
-    pub fn read_u32(&mut self) -> Result<u32> {
-        self.read_bytes(std::mem::size_of::<u32>())
-            .map(|bytes| u32::from_be_bytes(bytes.try_into().unwrap()))
+    pub fn get_u8(&mut self) -> u8 {
+        assert!(1 <= self.buffer_end - self.current, "buffer overflow");
+        self.get_u8_fast()
     }
 
-    pub fn read_utf8(&mut self, length: usize) -> Result<String> {
-        self.read_bytes(length)
-            .map(|bytes| String::from_utf8(bytes.try_into().unwrap()).unwrap())
+    pub fn get_u16_fast(&mut self) -> u16 {
+        let high_byte = self.get_u8_fast();
+        let low_byte = self.get_u8_fast();
+        (high_byte as u16) << 8 | low_byte as u16
     }
 
-    pub fn read_integer(&mut self) -> Result<i32> {
-        self.read_bytes(std::mem::size_of::<i32>())
-            .map(|bytes| i32::from_be_bytes(bytes.try_into().unwrap()))
+    pub fn get_u16(&mut self) -> u16 {
+        assert!(2 <= self.buffer_end - self.current, "buffer overflow");
+        self.get_u16_fast()
     }
 
-    pub fn read_float(&mut self) -> Result<f32> {
-        self.read_bytes(std::mem::size_of::<f32>())
-            .map(|bytes| f32::from_be_bytes(bytes.try_into().unwrap()))
+    pub fn get_u32_fast(&mut self) -> u32 {
+        let high_u16 = self.get_u16_fast();
+        let low_u16 = self.get_u16_fast();
+        (high_u16 as u32) << 16 | low_u16 as u32
     }
 
-    pub fn read_double(&mut self) -> Result<f64> {
-        self.read_bytes(std::mem::size_of::<f64>())
-            .map(|bytes| f64::from_be_bytes(bytes.try_into().unwrap()))
+    pub fn get_u32(&mut self) -> u32 {
+        assert!(4 <= self.buffer_end - self.current, "buffer overflow");
+        self.get_u32_fast()
     }
 
-    pub fn read_long(&mut self) -> Result<i64> {
-        self.read_bytes(std::mem::size_of::<i64>())
-            .map(|bytes| i64::from_be_bytes(bytes.try_into().unwrap()))
+    pub fn get_u64_fast(&mut self) -> u64 {
+        let high_u32 = self.get_u32_fast();
+        let low_u32 = self.get_u32_fast();
+        (high_u32 as u64) << 32 | low_u32 as u64
     }
 
-    pub fn has_unread_data(&self) -> Result<bool> {
-        Ok(self.position < self.buffer.len())
+    pub fn get_u64(&mut self) -> u64 {
+        assert!(8 <= self.buffer_end - self.current, "buffer overflow");
+        self.get_u64_fast()
+    }
+
+    pub fn skip_u8_fast(&mut self, length: usize) {
+        self.current += 1 * length
+    }
+
+    pub fn skip_u16_fast(&mut self, length: usize) {
+        self.current += 2 * length
+    }
+
+    pub fn skip_u32_fast(&mut self, length: usize) {
+        self.current += 4
+    }
+
+    pub fn guarantee_more(&self, size: usize) {
+        assert!(
+            size <= self.buffer_end - self.buffer_start,
+            "buffer overflow"
+        )
+    }
+
+    pub fn at_eos(&self) -> bool {
+        self.current == self.buffer_end
     }
 }
 
@@ -83,10 +102,26 @@ mod tests {
     use crate::reader::buffer::Buffer;
 
     #[test]
-    fn buffer_works() {
-        let data = vec![0x00, 0x00, 0x00, 0x42];
-        let mut buffer = Buffer::new(&data);
+    fn we_can_get_u8_from_buffer() {
+        let data = vec![0x32, 0x00, 0x00, 0x42];
+        let mut buffer = Buffer::new(&data, data.len(), "src");
 
-        assert_eq!(0x42u32, buffer.read_u32().unwrap());
+        assert_eq!(0x32u8, buffer.get_u8());
+    }
+
+    #[test]
+    fn we_can_get_u16_from_buffer() {
+        let data = vec![0x32, 0x21, 0x00, 0x42];
+        let mut buffer = Buffer::new(&data, data.len(), "src");
+
+        assert_eq!(0x3221u16, buffer.get_u16());
+    }
+
+    #[test]
+    fn we_can_get_u32_from_buffer() {
+        let data = vec![0x32, 0x21, 0x00, 0x42];
+        let mut buffer = Buffer::new(&data, data.len(), "src");
+
+        assert_eq!(0x32210042u32, buffer.get_u32());
     }
 }

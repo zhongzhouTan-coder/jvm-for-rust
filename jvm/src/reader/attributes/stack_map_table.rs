@@ -17,12 +17,12 @@ impl AttributeTrait for StackMapTableAttribute {
         for _ in 0..number_of_entries {
             let frame_type = FrameType::from_u8(buffer.read_u8()?);
             let entry: StackMapFrame = match frame_type {
-                FrameType::Same(_) => StackMapFrame::SameFrame(frame_type),
-                FrameType::SameLocals1StackItem(_) => {
+                FrameType::SAME(_) => StackMapFrame::SameFrame(frame_type),
+                FrameType::SAME_LOCALS_1_STACK_ITEM(_) => {
                     let stack = VerificationTypeInfo::decode_attribute(buffer)?;
                     StackMapFrame::SameLocals1StackItemFrame(frame_type, stack)
                 }
-                FrameType::SameLocals1StackItemExtended(_) => {
+                FrameType::SAME_LOCALS_1_STACK_ITEM_EXTENDED(_) => {
                     let offset_delta = buffer.read_u16()?;
                     let stack = VerificationTypeInfo::decode_attribute(buffer)?;
                     StackMapFrame::SameLocals1StackItemFrameExtended(
@@ -31,22 +31,22 @@ impl AttributeTrait for StackMapTableAttribute {
                         stack,
                     )
                 }
-                FrameType::Chop(_) => {
+                FrameType::CHOP(_) => {
                     let offset_delta = buffer.read_u16()?;
                     StackMapFrame::ChopFrame(frame_type, offset_delta)
                 }
-                FrameType::SameFrameExtended(_) => {
+                FrameType::SAME_FRAME_EXTENDED(_) => {
                     let offset_delta = buffer.read_u16()?;
                     StackMapFrame::SameFrameExtend(frame_type, offset_delta)
                 }
-                FrameType::Append(value) => {
+                FrameType::APPEND(value) => {
                     let offset_delta = buffer.read_u16()?;
                     let locals = (0..value - 251)
                         .map(|_| VerificationTypeInfo::decode_attribute(buffer))
                         .collect::<Result<Vec<VerificationTypeInfo>, AttributeError>>()?;
                     StackMapFrame::AppendFrame(frame_type, offset_delta, locals)
                 }
-                FrameType::FullFrame(_) => {
+                FrameType::FULL_FRAME(_) => {
                     let offset_delta = buffer.read_u16()?;
                     let number_of_locals = buffer.read_u16()?;
                     let locals = (0..number_of_locals)
@@ -92,32 +92,33 @@ pub enum StackMapFrame {
     ),
 }
 
+#[allow(non_camel_case_types)]
 pub enum FrameType {
-    Same(u8),
-    SameLocals1StackItem(u8),
-    SameLocals1StackItemExtended(u8),
-    Chop(u8),
-    SameFrameExtended(u8),
-    Append(u8),
-    FullFrame(u8),
+    SAME(u8),
+    SAME_LOCALS_1_STACK_ITEM(u8),
+    SAME_LOCALS_1_STACK_ITEM_EXTENDED(u8),
+    CHOP(u8),
+    SAME_FRAME_EXTENDED(u8),
+    APPEND(u8),
+    FULL_FRAME(u8),
 }
 
 impl FrameType {
     pub fn from_u8(value: u8) -> Self {
         if value <= 63 {
-            Self::Same(value)
+            Self::SAME(value)
         } else if value <= 127 {
-            Self::SameLocals1StackItem(value)
+            Self::SAME_LOCALS_1_STACK_ITEM(value)
         } else if value == 247 {
-            Self::SameLocals1StackItemExtended(value)
+            Self::SAME_LOCALS_1_STACK_ITEM_EXTENDED(value)
         } else if value >= 248 && value <= 250 {
-            Self::Chop(value)
+            Self::CHOP(value)
         } else if value == 251 {
-            Self::SameFrameExtended(value)
+            Self::SAME_FRAME_EXTENDED(value)
         } else if value >= 252 && value <= 254 {
-            Self::Append(value)
+            Self::APPEND(value)
         } else if value == 255 {
-            Self::FullFrame(value)
+            Self::FULL_FRAME(value)
         } else {
             panic!("unsupported frame type -- [{}].", value)
         }
