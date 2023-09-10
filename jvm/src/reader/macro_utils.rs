@@ -11,3 +11,23 @@ macro_rules! switch {
 		}
 	};
 }
+
+#[macro_export]
+macro_rules! primitive_enum {
+	($prim:ty, $(#[$meta:meta])? $name:ident { $($variant:ident $(= $value:expr)?,)* }) => {
+		#[repr($prim)]
+		$(#[$meta])?
+		pub enum $name {
+			$($variant $(= $value)?),*
+		}
+
+	impl $name {
+			pub fn from(value: $prim) -> Option<Self> {
+				match value {
+					$(x if x == $name::$variant as $prim => Some($name::$variant),)*
+					_ => None,
+				}
+			}
+		}
+	};
+}

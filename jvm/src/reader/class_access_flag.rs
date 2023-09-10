@@ -14,6 +14,19 @@ pub enum ClassAccessFlag {
     MODULE = 0x8000,
 }
 
+impl ClassAccessFlag {
+    pub fn jvm_recognized_flags() -> u16 {
+        ClassAccessFlag::PUBLIC as u16
+            | ClassAccessFlag::FINAL as u16
+            | ClassAccessFlag::SUPER as u16
+            | ClassAccessFlag::INTERFACE as u16
+            | ClassAccessFlag::ABSTRACT as u16
+            | ClassAccessFlag::ANNOTATION as u16
+            | ClassAccessFlag::ENUM as u16
+            | ClassAccessFlag::SYNTHETIC as u16
+    }
+}
+
 impl Default for ClassAccessFlag {
     fn default() -> Self {
         Self::PUBLIC
@@ -24,6 +37,13 @@ impl ops::BitOr for ClassAccessFlag {
     type Output = u16;
     fn bitor(self, rhs: Self) -> Self::Output {
         self as u16 | rhs as u16
+    }
+}
+
+impl ops::BitOr<u16> for ClassAccessFlag {
+    type Output = u16;
+    fn bitor(self, rhs: u16) -> Self::Output {
+        self as u16 | rhs
     }
 }
 

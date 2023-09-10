@@ -21,13 +21,21 @@ enum ConstantValue {
 
 impl ConstantPool {
     pub fn new(length: usize) -> ConstantPool {
-        let tags = vec![ConstantTag::IN_VALID_TAG; length];
+        let tags = vec![ConstantTag::JVM_CONSTANT_Invalid; length];
         let values = vec![ConstantValue::Invalid; length];
         ConstantPool {
             tags,
             length,
             values,
         }
+    }
+
+    pub fn length(&self) -> usize {
+        self.length
+    }
+
+    pub fn is_within_bounds(&self, index: usize) -> bool {
+        index < self.length
     }
 
     pub fn klass_index_at_put(&mut self, which: usize, name_index: u16) {
@@ -144,6 +152,24 @@ impl ConstantPool {
         self.value_at_put(which, ConstantValue::Symbol(symbol))
     }
 
+    pub fn unresolved_klass_at_put(
+        &mut self,
+        which: usize,
+        name_index: u16,
+        resolved_klass_index: u16,
+    ) {
+        self.tag_at_put(which, ConstantTag::JVM_CONSTANT_UnresolvedClass);
+        self.value_at_put(
+            which,
+            ConstantValue::JInt((resolved_klass_index as u32) << 16 | name_index as u32),
+        )
+    }
+
+    pub fn unresolved_string_at_put(&mut self, which: usize, symbol: Arc<Symbol>) {
+        self.tag_at_put(which, ConstantTag::JVM_CONSTANT_String);
+        self.value_at_put(which, ConstantValue::Symbol(symbol));
+    }
+
     pub fn tag_at_put(&mut self, which: usize, tag: ConstantTag) {
         if let Some(element) = self.tags.get_mut(which) {
             *element = tag
@@ -154,5 +180,103 @@ impl ConstantPool {
         if let Some(element) = self.values.get_mut(which) {
             *element = value
         }
+    }
+
+    pub fn klass_name_at(&self, which: usize) -> Arc<Symbol> {
+        self.symbol_at(self.klass_slot_at(which) as usize)
+    }
+
+    pub fn symbol_at(&self, which: usize) -> Arc<Symbol> {
+        match self.values.get(which) {
+            Some(ConstantValue::Symbol(symbol)) => symbol.clone(),
+            _ => panic!("invalid symbol index in constant pool"),
+        }
+    }
+
+    pub fn klass_slot_at(&self, which: usize) -> u16 {
+        match self.values.get(which) {
+            Some(ConstantValue::JInt(value)) => (value >> 16) as u16,
+            _ => panic!("invalid data in constant pool"),
+        }
+    }
+
+    pub fn tag_at(&self, which: usize) -> &ConstantTag {
+        unsafe { self.tags.get_unchecked(which) }
+    }
+
+    pub fn klass_ref_index_at(&self, which: usize) -> u16 {
+        match self.values.get(which) {
+            Some(ConstantValue::JInt(value)) => ConstantPool::extract_low_u16(value),
+            _ => panic!("Invalid klass index."),
+        }
+    }
+
+    pub fn name_and_type_ref_index_at(&self, which: usize) -> u16 {
+        match self.values.get(which) {
+            Some(ConstantValue::JInt(value)) => ConstantPool::extract_high_u16(value),
+            _ => panic!("Invalid name and type index."),
+        }
+    }
+
+    pub fn name_ref_index_at(&self, which: usize) -> u16 {
+        match self.values.get(which) {
+            Some(ConstantValue::JInt(value)) => ConstantPool::extract_low_u16(value),
+            _ => panic!("Invalid name ref index {}.", which),
+        }
+    }
+
+    pub fn signature_ref_index_at(&self, which: usize) -> u16 {
+        match self.values.get(which) {
+            Some(ConstantValue::JInt(value)) => ConstantPool::extract_high_u16(value),
+            _ => panic!("Invalid signature ref index {}.", which),
+        }
+    }
+
+    pub fn klass_index_at(&self, which: usize) -> u16 {
+        match self.values.get(which) {
+            Some(ConstantValue::JInt(value)) => ConstantPool::extract_low_u16(value),
+            _ => panic!("Invalid klass index {}.", which),
+        }
+    }
+
+    pub fn string_index_at(&self, which: usize) -> u16 {
+        match self.values.get(which) {
+            Some(ConstantValue::JInt(value)) => ConstantPool::extract_low_u16(value),
+            _ => panic!("Invalid string index {}.", which),
+        }
+    }
+
+    pub fn method_handle_index_at(&self, which: usize) -> u16 {
+        match self.values.get(which) {
+            Some(ConstantValue::JInt(value)) => ConstantPool::extract_high_u16(value),
+            _ => panic!("Invalid method handle index {}.", which),
+        }
+    }
+
+    pub fn method_handle_ref_kind_at(&self, which: usize) -> u16 {
+        match self.values.get(which) {
+            Some(ConstantValue::JInt(value)) => ConstantPool::extract_low_u16(value),
+            _ => panic!("Invalid method handle ref kind index {}.", which),
+        }
+    }
+
+    fn extract_low_u16(value: &u32) -> u16 {
+        (value.clone() & 0x0000ffff) as u16
+    }
+
+    fn extract_high_u16(&value: &u32) -> u16 {
+        (value.clone() >> 16) as u16
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ConstantPool;
+
+    #[test]
+    fn we_can_extract_low_u16_from_u32() {
+        let value = 0x0101f342u32;
+        let result = ConstantPool::extract_low_u16(&value);
+        assert_eq!(result, 0xf342u16)
     }
 }

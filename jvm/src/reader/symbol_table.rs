@@ -1,9 +1,9 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex},
 };
 
-use once_cell::sync::OnceCell;
+use once_cell::sync::Lazy;
 
 use super::symbol::Symbol;
 
@@ -16,7 +16,7 @@ pub struct SymbolTable {
     look_up_shared_first: bool,
 }
 
-static mut INSTANCE: OnceCell<Mutex<SymbolTable>> = OnceCell::new();
+static INSTANCE: Lazy<Mutex<SymbolTable>> = Lazy::new(|| Mutex::new(SymbolTable::new()));
 
 impl SymbolTable {
     pub fn new() -> Self {
@@ -28,33 +28,35 @@ impl SymbolTable {
         }
     }
 
-    pub fn global() -> &'static Self {
-        unsafe {}
+    pub fn new_symbol(key: SymbolKey, value: Symbol) -> Arc<Symbol> {
+        let mut symbol_table = INSTANCE.lock().unwrap();
+        let key_ref = &key.clone();
+        symbol_table.local_table.insert(key, Arc::new(value));
+        symbol_table.local_table.get(key_ref).unwrap().clone()
     }
 
-    pub fn new_symbol(&mut self, key: SymbolKey, value: Symbol) {
-        self.local_table.insert(key, Arc::new(value));
-    }
-
-    pub fn lookup_only(&self, name: &SymbolKey) -> Option<Arc<Symbol>> {
-        match self.look_up_shared_first {
-            true => self
-                .lookup_shared(name)
-                .map_or_else(|| self.lookup_dynamic(name), |symbol| Some(symbol)),
-            false => self
-                .lookup_dynamic(name)
-                .map_or_else(|| self.lookup_shared(name), |symbol| Some(symbol)),
+    pub fn lookup_only(name: &SymbolKey) -> Option<Arc<Symbol>> {
+        let symbol = INSTANCE.lock().unwrap();
+        match symbol.look_up_shared_first {
+            true => SymbolTable::lookup_shared(name)
+                .map_or_else(|| SymbolTable::lookup_dynamic(name), |symbol| Some(symbol)),
+            false => SymbolTable::lookup_dynamic(name)
+                .map_or_else(|| SymbolTable::lookup_shared(name), |symbol| Some(symbol)),
         }
     }
 
-    pub fn lookup_shared(&self, name: &SymbolKey) -> Option<Arc<Symbol>> {
-        self.dynamic_table
+    pub fn lookup_shared(name: &SymbolKey) -> Option<Arc<Symbol>> {
+        let symbol_table: std::sync::MutexGuard<'_, SymbolTable> = INSTANCE.lock().unwrap();
+        symbol_table
+            .dynamic_table
             .get(name)
             .map_or_else(|| None, |symbol| Some(symbol.clone()))
     }
 
-    pub fn lookup_dynamic(&self, name: &SymbolKey) -> Option<Arc<Symbol>> {
-        self.dynamic_table
+    pub fn lookup_dynamic(name: &SymbolKey) -> Option<Arc<Symbol>> {
+        let symbol_table: std::sync::MutexGuard<'_, SymbolTable> = INSTANCE.lock().unwrap();
+        symbol_table
+            .dynamic_table
             .get(name)
             .map_or_else(|| None, |symbol| Some(symbol.clone()))
     }
