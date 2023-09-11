@@ -1,4 +1,5 @@
 use core::num;
+use std::fmt::format;
 
 use crate::{
     reader::{
@@ -317,6 +318,21 @@ impl<'a> ClassFileParser<'a> {
                         .class_file
                         .constant_pool
                         .method_handle_ref_kind_at(index as usize);
+                    match ReferenceKind::from(ref_kind) {
+                        Some(ReferenceKind::JVM_REF_getField)
+                        | Some(ReferenceKind::JVM_REF_getStatic)
+                        | Some(ReferenceKind::JVM_REF_putField)
+                        | Some(ReferenceKind::JVM_REF_putStatic) => self.guarantee_property(
+                            tag.is_field(),
+                            &format!("Invalid constant pool index {} (not a field).", ref_index))?,
+                        Some(ReferenceKind::JVM_REF_invokeVirtual) | Some(ReferenceKind::JVM_REF_newInvokeSpecial) => self.guarantee_property(
+                            tag.is_method(),
+                            &format!("Invalid constant pool index {} (not a method).", ref_index))?,
+                        Some(ReferenceKind::JVM_REF_invokeStatic) | Some(ReferenceKind::JVM_REF_invokeSpecial) => self.guarantee_property(
+                            tag.is_method() || ((self.class_file.major_version >= JAVA_))
+                        )
+                        None => panic!("Invalid constant reference kind.")
+                    }
                 }
                 _ => panic!("Invalid constant type."),
             }

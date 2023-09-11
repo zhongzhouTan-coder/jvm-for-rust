@@ -1,7 +1,7 @@
 use crate::primitive_enum;
 
 primitive_enum!(
-    u8,
+    u16,
     #[allow(non_camel_case_types)]
     ReferenceKind {
         JVM_REF_getField = 1,
