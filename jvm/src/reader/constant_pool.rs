@@ -1,12 +1,14 @@
 use std::{io::Bytes, sync::Arc};
 
-use super::{constant_tag::ConstantTag, symbol::Symbol};
+use super::{constant_tag::ConstantTag, klass::Klass, symbol::Symbol};
 
 #[derive(Debug, Clone, Default)]
 pub struct ConstantPool {
     tags: Vec<ConstantTag>,
     length: usize,
     values: Vec<ConstantValue>,
+    flags: u16,
+    resolved_klasses: Vec<Klass>,
 }
 
 #[derive(Debug, Clone)]
@@ -19,14 +21,26 @@ enum ConstantValue {
     Symbol(Arc<Symbol>),
 }
 
+#[repr(u16)]
+enum Flag {
+    has_preresolution = 1,
+    on_stack = 2,
+    is_shared = 4,
+    has_dynamic_constant = 8,
+}
+
 impl ConstantPool {
     pub fn new(length: usize) -> ConstantPool {
         let tags = vec![ConstantTag::JVM_CONSTANT_Invalid; length];
         let values = vec![ConstantValue::Invalid; length];
+        let flags = 0x0000u16;
+        let resolved_klasses = Vec::new();
         ConstantPool {
             tags,
             length,
             values,
+            flags,
+            resolved_klasses,
         }
     }
 
@@ -36,6 +50,10 @@ impl ConstantPool {
 
     pub fn is_within_bounds(&self, index: usize) -> bool {
         index < self.length
+    }
+
+    pub fn set_has_dynamic_constant(&mut self) {
+        self.flags |= Flag::has_dynamic_constant as u16
     }
 
     pub fn klass_index_at_put(&mut self, which: usize, name_index: u16) {
@@ -260,11 +278,29 @@ impl ConstantPool {
         }
     }
 
-    fn extract_low_u16(value: &u32) -> u16 {
+    pub fn method_type_index_at(&self, which: usize) -> u16 {
+        match self.values.get(which) {
+            Some(ConstantValue::JInt(value)) => ConstantPool::extract_low_u16(value),
+            _ => panic!("Invalid method type index {}.", which),
+        }
+    }
+
+    pub fn bootstrap_name_and_type_ref_index_at(&self, which: usize) -> u16 {
+        match self.values.get(which) {
+            Some(ConstantValue::JInt(value)) => ConstantPool::extract_high_u16(value),
+            _ => panic!("Invalid bootstrap name and type ref index {}.", which),
+        }
+    }
+
+    pub fn allocate_resolved_klasses(&mut self, num_klasses: u16) {
+        self.resolved_klasses = vec![Klass::default(); num_klasses as usize]
+    }
+
+    pub fn extract_low_u16(value: &u32) -> u16 {
         (value.clone() & 0x0000ffff) as u16
     }
 
-    fn extract_high_u16(&value: &u32) -> u16 {
+    pub fn extract_high_u16(&value: &u32) -> u16 {
         (value.clone() >> 16) as u16
     }
 }
@@ -278,5 +314,12 @@ mod tests {
         let value = 0x0101f342u32;
         let result = ConstantPool::extract_low_u16(&value);
         assert_eq!(result, 0xf342u16)
+    }
+
+    #[test]
+    fn we_can_extract_high_u16_from_u32() {
+        let value = 0x0101f342u32;
+        let result = ConstantPool::extract_high_u16(&value);
+        assert_eq!(result, 0x0101u16)
     }
 }

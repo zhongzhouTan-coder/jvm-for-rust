@@ -1,22 +1,9 @@
 #[macro_export]
-macro_rules! switch {
-    ($p:ident, $t:ty, { $($e:expr => $code:block)* $(_ => $d:block)? }) => {
-		match $p {
-			$(
-				x if x == $e as $t => $code,
-			)*
-			$(
-				_ => $d
-			)?
-		}
-	};
-}
-
-#[macro_export]
 macro_rules! primitive_enum {
 	($prim:ty, $(#[$meta:meta])* $name:ident { $($variant:ident $(= $value:expr)?,)* }) => {
 		#[repr($prim)]
 		$(#[$meta])*
+		#[derive(Copy, Clone, PartialEq)]
 		pub enum $name {
 			$($variant $(= $value)?),*
 		}
@@ -30,31 +17,41 @@ macro_rules! primitive_enum {
 			}
 		}
 
+		impl std::cmp::PartialEq<$prim> for $name {
+			fn eq(&self, other: &$prim) -> bool {
+				*self as $prim == *other
+			}
+
+    		fn ne(&self, other: &$prim) -> bool {
+				*self as $prim != *other
+			}
+		}
+
 		impl std::cmp::PartialOrd<$prim> for $name {
-			fn partial_cmp(&self, other: &$prim) -> Option<Ordering> {
-				if *self as $prim == other {
-					Ordering::Equal
-				} else *self as $prim < other {
-					Ordering::Less
+			fn partial_cmp(&self, other: &$prim) -> Option<std::cmp::Ordering> {
+				if *self as $prim == *other {
+					Some(std::cmp::Ordering::Equal)
+				} else if *self as $prim < *other {
+					Some(std::cmp::Ordering::Less)
 				} else {
-					Ordering::Greater
+					Some(std::cmp::Ordering::Greater)
 				}
 			}
 
 			fn lt(&self, other: &$prim) -> bool {
-				*self as $prim < other
+				*self as $prim < *other
 			}
 
 			fn le(&self, other: &$prim) -> bool {
-				*self as $prim <= other
+				*self as $prim <= *other
 			}
 
 			fn gt(&self, other: &$prim) -> bool {
-				*self as $prim > other
+				*self as $prim > *other
 			}
 
 			fn ge(&self, other: &$prim) -> bool {
-				*self as $prim > other
+				*self as $prim > *other
 			}
 		}
 	};

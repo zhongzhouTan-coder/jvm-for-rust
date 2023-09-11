@@ -3,11 +3,11 @@ pub struct Buffer<'a> {
     buffer_start: usize,
     buffer_end: usize,
     current: usize,
-    source: &'a str,
+    source: String,
 }
 
 impl<'a> Buffer<'a> {
-    pub fn new(buffer: &'a [u8], length: usize, source: &'a str) -> Self {
+    pub fn new(buffer: &'a [u8], length: usize, source: String) -> Self {
         Buffer {
             buffer,
             buffer_start: 0,
@@ -22,7 +22,7 @@ impl<'a> Buffer<'a> {
     }
 
     pub fn source(&self) -> &str {
-        self.source
+        &self.source
     }
 
     pub fn get_u8_fast(&mut self) -> u8 {
@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn we_can_get_u8_from_buffer() {
         let data = vec![0x32, 0x00, 0x00, 0x42];
-        let mut buffer = Buffer::new(&data, data.len(), "src");
+        let mut buffer = Buffer::new(&data, data.len(), "src".to_string());
 
         assert_eq!(0x32u8, buffer.get_u8());
     }
@@ -112,7 +112,7 @@ mod tests {
     #[test]
     fn we_can_get_u16_from_buffer() {
         let data = vec![0x32, 0x21, 0x00, 0x42];
-        let mut buffer = Buffer::new(&data, data.len(), "src");
+        let mut buffer = Buffer::new(&data, data.len(), "src".to_string());
 
         assert_eq!(0x3221u16, buffer.get_u16());
     }
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn we_can_get_u32_from_buffer() {
         let data = vec![0x32, 0x21, 0x00, 0x42];
-        let mut buffer = Buffer::new(&data, data.len(), "src");
+        let mut buffer = Buffer::new(&data, data.len(), "src".to_string());
 
         assert_eq!(0x32210042u32, buffer.get_u32());
     }

@@ -1,12 +1,5 @@
-use core::num;
-use std::fmt::format;
-
-use crate::{
-    reader::{
-        reference_kind::ReferenceKind, symbol::Symbol, symbol_table::SymbolTable,
-        verifier::Verifier,
-    },
-    switch,
+use crate::reader::{
+    reference_kind::ReferenceKind, symbol::Symbol, symbol_table::SymbolTable, verifier::Verifier,
 };
 
 use super::{
@@ -22,7 +15,7 @@ pub struct ClassFileParser<'a> {
 }
 
 impl<'a> ClassFileParser<'a> {
-    pub fn new(data: &'a [u8], length: usize, source: &'a str) -> ClassFileParser<'a> {
+    pub fn new(data: &'a [u8], length: usize, source: String) -> ClassFileParser<'a> {
         ClassFileParser {
             buffer: Buffer::new(data, length, source),
             class_file: Default::default(),
@@ -69,102 +62,131 @@ impl<'a> ClassFileParser<'a> {
         let mut index = 1;
         while index < cp_size {
             let tag = self.buffer.get_u8_fast();
-            switch!(tag, u8, {
-                ConstantTag::JVM_CONSTANT_Class => {
+            match ConstantTag::from(tag) {
+                Some(ConstantTag::JVM_CONSTANT_Class) => {
                     self.buffer.guarantee_more(3);
                     let name_index = self.buffer.get_u16_fast();
                     self.class_file
                         .constant_pool
                         .klass_index_at_put(index as usize, name_index);
                 }
-                ConstantTag::JVM_CONSTANT_Fieldref => {
+                Some(ConstantTag::JVM_CONSTANT_Fieldref) => {
                     self.buffer.guarantee_more(5);
                     let class_index = self.buffer.get_u16_fast();
                     let name_and_type_index = self.buffer.get_u16_fast();
-                    self.class_file
-                        .constant_pool
-                        .field_at_put(index as usize, class_index, name_and_type_index);
+                    self.class_file.constant_pool.field_at_put(
+                        index as usize,
+                        class_index,
+                        name_and_type_index,
+                    );
                 }
-                ConstantTag::JVM_CONSTANT_Methodref => {
+                Some(ConstantTag::JVM_CONSTANT_Methodref) => {
                     self.buffer.guarantee_more(5);
                     let class_index = self.buffer.get_u16_fast();
                     let name_and_type_index = self.buffer.get_u16_fast();
-                    self.class_file
-                        .constant_pool
-                        .method_at_put(index as usize, class_index, name_and_type_index);
+                    self.class_file.constant_pool.method_at_put(
+                        index as usize,
+                        class_index,
+                        name_and_type_index,
+                    );
                 }
-                ConstantTag::JVM_CONSTANT_InterfaceMethodref => {
+                Some(ConstantTag::JVM_CONSTANT_InterfaceMethodref) => {
                     self.buffer.guarantee_more(5);
                     let class_index = self.buffer.get_u16_fast();
                     let name_and_type_index = self.buffer.get_u16_fast();
-                    self.class_file
-                        .constant_pool
-                        .interface_method_at_put(index as usize, class_index, name_and_type_index);
+                    self.class_file.constant_pool.interface_method_at_put(
+                        index as usize,
+                        class_index,
+                        name_and_type_index,
+                    );
                 }
-                ConstantTag::JVM_CONSTANT_String => {
+                Some(ConstantTag::JVM_CONSTANT_String) => {
                     self.buffer.guarantee_more(3);
                     let string_index = self.buffer.get_u16_fast();
-                    self.class_file.constant_pool.string_index_at_put(index as usize, string_index);
+                    self.class_file
+                        .constant_pool
+                        .string_index_at_put(index as usize, string_index);
                 }
-                ConstantTag::JVM_CONSTANT_MethodHandle => {
+                Some(ConstantTag::JVM_CONSTANT_MethodHandle) => {
                     let major_version = self.class_file.major_version;
-                    assert!(major_version >= Verifier::INVOKED_DYNAMIC_MAJOR_VERSION as u16,
-                        "Class file version does not support constant tag {}", tag);
+                    assert!(
+                        major_version >= Verifier::INVOKED_DYNAMIC_MAJOR_VERSION as u16,
+                        "Class file version does not support constant tag {}",
+                        tag
+                    );
                     self.buffer.guarantee_more(4);
                     let ref_kind = self.buffer.get_u8_fast();
                     let ref_index = self.buffer.get_u16_fast();
-                    self.class_file
-                        .constant_pool
-                        .method_handle_index_at_put(index as usize, ref_kind, ref_index);
+                    self.class_file.constant_pool.method_handle_index_at_put(
+                        index as usize,
+                        ref_kind,
+                        ref_index,
+                    );
                 }
-                ConstantTag::JVM_CONSTANT_MethodType => {
+                Some(ConstantTag::JVM_CONSTANT_MethodType) => {
                     let major_version = self.class_file.major_version;
-                    assert!(major_version >= Verifier::INVOKED_DYNAMIC_MAJOR_VERSION as u16,
-                        "Class file version does not support constant tag {}", tag);
+                    assert!(
+                        major_version >= Verifier::INVOKED_DYNAMIC_MAJOR_VERSION as u16,
+                        "Class file version does not support constant tag {}",
+                        tag
+                    );
                     self.buffer.guarantee_more(3);
                     let signature_index = self.buffer.get_u16_fast();
                     self.class_file
                         .constant_pool
                         .method_type_index_at_put(index as usize, signature_index);
                 }
-                ConstantTag::JVM_CONSTANT_Dynamic => {
+                Some(ConstantTag::JVM_CONSTANT_Dynamic) => {
                     let major_version = self.class_file.major_version;
-                    assert!(major_version >= Verifier::DYNAMIC_CONSTANT_MAJOR_VERSION as u16,
-                        "Class file version does not support constant tag {}", tag);
+                    assert!(
+                        Verifier::DYNAMIC_CONSTANT_MAJOR_VERSION <= major_version,
+                        "Class file version does not support constant tag {}",
+                        tag
+                    );
                     self.buffer.guarantee_more(5);
                     let bootstrap_specifier_index = self.buffer.get_u16_fast();
                     let name_and_type_index = self.buffer.get_u16_fast();
-                    self.class_file
-                        .constant_pool
-                        .dynamic_constant_at_put(index as usize, bootstrap_specifier_index, name_and_type_index);
+                    self.class_file.constant_pool.dynamic_constant_at_put(
+                        index as usize,
+                        bootstrap_specifier_index,
+                        name_and_type_index,
+                    );
                 }
-                ConstantTag::JVM_CONSTANT_InvokeDynamic => {
+                Some(ConstantTag::JVM_CONSTANT_InvokeDynamic) => {
                     let major_version = self.class_file.major_version;
-                    assert!(major_version >= Verifier::INVOKED_DYNAMIC_MAJOR_VERSION as u16,
-                        "Class file version does not support constant tag {}", tag);
+                    assert!(
+                        major_version >= Verifier::INVOKED_DYNAMIC_MAJOR_VERSION as u16,
+                        "Class file version does not support constant tag {}",
+                        tag
+                    );
                     self.buffer.guarantee_more(5);
                     let bootstrap_specifier_index = self.buffer.get_u16_fast();
                     let name_and_type_index = self.buffer.get_u16_fast();
-                    self.class_file
-                        .constant_pool
-                        .invoke_dynamic_at_put(index as usize, bootstrap_specifier_index, name_and_type_index);
+                    self.class_file.constant_pool.invoke_dynamic_at_put(
+                        index as usize,
+                        bootstrap_specifier_index,
+                        name_and_type_index,
+                    );
                 }
-                ConstantTag::JVM_CONSTANT_Integer => {
+                Some(ConstantTag::JVM_CONSTANT_Integer) => {
                     self.buffer.guarantee_more(5);
                     let bytes = self.buffer.get_u32_fast();
                     self.class_file
                         .constant_pool
                         .int_at_put(index as usize, bytes);
                 }
-                ConstantTag::JVM_CONSTANT_Float => {
+                Some(ConstantTag::JVM_CONSTANT_Float) => {
                     self.buffer.guarantee_more(5);
                     let bytes = self.buffer.get_u32_fast();
                     self.class_file
                         .constant_pool
                         .float_at_put(index as usize, bytes);
                 }
-                ConstantTag::JVM_CONSTANT_Long => {
-                    self.guarantee_property(index + 1 < cp_size, &format!("Invalid constant pool entry {}", index))?;
+                Some(ConstantTag::JVM_CONSTANT_Long) => {
+                    self.guarantee_property(
+                        index + 1 < cp_size,
+                        &format!("Invalid constant pool entry {}", index),
+                    )?;
                     self.buffer.guarantee_more(9);
                     let bytes = self.buffer.get_u64_fast();
                     self.class_file
@@ -172,8 +194,11 @@ impl<'a> ClassFileParser<'a> {
                         .long_at_put(index as usize, bytes);
                     index += 1;
                 }
-                ConstantTag::JVM_CONSTANT_Double => {
-                    self.guarantee_property(index + 1 < cp_size, &format!("Invalid constant pool entry {}", index))?;
+                Some(ConstantTag::JVM_CONSTANT_Double) => {
+                    self.guarantee_property(
+                        index + 1 < cp_size,
+                        &format!("Invalid constant pool entry {}", index),
+                    )?;
                     self.buffer.guarantee_more(9);
                     let bytes = self.buffer.get_u64_fast();
                     self.class_file
@@ -181,41 +206,44 @@ impl<'a> ClassFileParser<'a> {
                         .double_at_put(index as usize, bytes);
                     index += 1;
                 }
-                ConstantTag::JVM_CONSTANT_NameAndType => {
+                Some(ConstantTag::JVM_CONSTANT_NameAndType) => {
                     self.buffer.guarantee_more(5);
                     let name_index = self.buffer.get_u16_fast();
                     let signature_index = self.buffer.get_u16_fast();
-                    self.class_file
-                        .constant_pool
-                        .name_and_type_at_put(index as usize, name_index, signature_index);
+                    self.class_file.constant_pool.name_and_type_at_put(
+                        index as usize,
+                        name_index,
+                        signature_index,
+                    );
                 }
-                ConstantTag::JVM_CONSTANT_Utf8 => {
+                Some(ConstantTag::JVM_CONSTANT_Utf8) => {
                     self.buffer.guarantee_more(2);
                     let utf8_length = self.buffer.get_u16_fast();
                     self.buffer.guarantee_more((utf8_length + 1) as usize);
                     let utf8_bytes = self.buffer.get_u8_array_fast(utf8_length as usize);
                     match SymbolTable::lookup_only(&utf8_bytes.to_vec()) {
-                        Some(symbol) => self.class_file
+                        Some(symbol) => self
+                            .class_file
                             .constant_pool
                             .symbol_at_put(index as usize, symbol),
                         None => {
-                            let result = SymbolTable::new_symbol(utf8_bytes.to_vec(), Symbol::new(utf8_bytes.to_vec()));
+                            let result = SymbolTable::new_symbol(
+                                utf8_bytes.to_vec(),
+                                Symbol::new(utf8_bytes.to_vec()),
+                            );
                             self.class_file
                                 .constant_pool
                                 .symbol_at_put(index as usize, result);
                         }
                     }
                 }
-                ConstantTag::JVM_CONSTANT_Module => {
-                    self.buffer.guarantee_more(3);
-                    self.buffer.skip_u8_fast(2);
-                }
-                ConstantTag::JVM_CONSTANT_Package => {
+                Some(ConstantTag::JVM_CONSTANT_Module)
+                | Some(ConstantTag::JVM_CONSTANT_Package) => {
                     self.buffer.guarantee_more(3);
                     self.buffer.skip_u8_fast(2);
                 }
                 _ => {}
-            });
+            };
             index += 1;
         }
 
@@ -324,19 +352,85 @@ impl<'a> ClassFileParser<'a> {
                         | Some(ReferenceKind::JVM_REF_putField)
                         | Some(ReferenceKind::JVM_REF_putStatic) => self.guarantee_property(
                             tag.is_field(),
-                            &format!("Invalid constant pool index {} (not a field).", ref_index))?,
-                        Some(ReferenceKind::JVM_REF_invokeVirtual) | Some(ReferenceKind::JVM_REF_newInvokeSpecial) => self.guarantee_property(
-                            tag.is_method(),
-                            &format!("Invalid constant pool index {} (not a method).", ref_index))?,
-                        Some(ReferenceKind::JVM_REF_invokeStatic) | Some(ReferenceKind::JVM_REF_invokeSpecial) => self.guarantee_property(
-                            tag.is_method() || ((self.class_file.major_version >= JAVA_))
-                        )
-                        None => panic!("Invalid constant reference kind.")
+                            &format!("Invalid constant pool index {} (not a field).", ref_index),
+                        )?,
+                        Some(ReferenceKind::JVM_REF_invokeVirtual)
+                        | Some(ReferenceKind::JVM_REF_newInvokeSpecial) => self
+                            .guarantee_property(
+                                tag.is_method(),
+                                &format!(
+                                    "Invalid constant pool index {} (not a method).",
+                                    ref_index
+                                ),
+                            )?,
+                        Some(ReferenceKind::JVM_REF_invokeStatic)
+                        | Some(ReferenceKind::JVM_REF_invokeSpecial) => self.guarantee_property(
+                            tag.is_method()
+                                || ((ClassFileVersion::Jdk8 <= self.class_file.major_version)
+                                    && tag.is_interface_method()),
+                            &format!("Invalid constant pool index {} (not a method).", ref_index),
+                        )?,
+                        Some(ReferenceKind::JVM_REF_invokeInterface) => self.guarantee_property(
+                            tag.is_interface_method(),
+                            &format!(
+                                "Invalid constant pool index {} (not an interface method).",
+                                ref_index
+                            ),
+                        )?,
+                        None => panic!("Invalid constant reference kind."),
                     }
                 }
-                _ => panic!("Invalid constant type."),
+                ConstantTag::JVM_CONSTANT_MethodType => {
+                    let ref_index = self
+                        .class_file
+                        .constant_pool
+                        .method_type_index_at(index as usize);
+                    self.guarantee_property(
+                        self.valid_symbol_at(ref_index as usize),
+                        &format!("Invalid constant pool index {}.", ref_index),
+                    )?;
+                }
+                ConstantTag::JVM_CONSTANT_Dynamic => {
+                    let name_and_type_ref_index = self
+                        .class_file
+                        .constant_pool
+                        .bootstrap_name_and_type_ref_index_at(index as usize);
+                    let tag = self
+                        .class_file
+                        .constant_pool
+                        .tag_at(name_and_type_ref_index as usize);
+                    self.guarantee_property(
+                        self.valid_cp_range(name_and_type_ref_index as usize)
+                            && tag.is_name_and_type(),
+                        &format!("Invalid constant pool index {}.", name_and_type_ref_index),
+                    )?;
+                    self.class_file.constant_pool.set_has_dynamic_constant();
+                }
+                ConstantTag::JVM_CONSTANT_InvokeDynamic => {
+                    let name_and_type_ref_index = self
+                        .class_file
+                        .constant_pool
+                        .bootstrap_name_and_type_ref_index_at(index as usize);
+                    let tag = self
+                        .class_file
+                        .constant_pool
+                        .tag_at(name_and_type_ref_index as usize);
+                    self.guarantee_property(
+                        self.valid_cp_range(name_and_type_ref_index as usize)
+                            && tag.is_name_and_type(),
+                        &format!("Invalid constant pool index {}.", name_and_type_ref_index),
+                    )?;
+                }
+                _ => panic!(
+                    "Bad constant pool tag value {:?}.",
+                    self.class_file.constant_pool.tag_at(index as usize)
+                ),
             }
         }
+        self.class_file
+            .constant_pool
+            .allocate_resolved_klasses(num_klasses);
+        // may be we can do second verification for string format
         Ok(())
     }
 

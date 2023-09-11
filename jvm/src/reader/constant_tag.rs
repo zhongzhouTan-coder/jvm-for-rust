@@ -1,7 +1,9 @@
-#[allow(non_camel_case_types)]
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ConstantTag {
+use crate::primitive_enum;
+
+primitive_enum!(u8,
+    #[allow(non_camel_case_types)]
+    #[derive(Debug)]
+    ConstantTag  {
     JVM_CONSTANT_Invalid = 0,
     JVM_CONSTANT_Utf8 = 1,
     JVM_CONSTANT_Integer = 3,
@@ -23,7 +25,7 @@ pub enum ConstantTag {
     JVM_CONSTANT_ClassIndex,
     JVM_CONSTANT_StringIndex,
     JVM_CONSTANT_UnresolvedClass,
-}
+});
 
 impl ConstantTag {
     pub fn is_klass(&self) -> bool {

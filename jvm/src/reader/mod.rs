@@ -10,6 +10,7 @@ pub mod constant_tag;
 pub mod field_access_flag;
 pub mod field_info;
 pub mod jvm_constants;
+pub mod klass;
 pub mod macro_utils;
 pub mod method_access_flag;
 pub mod method_info;
