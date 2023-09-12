@@ -5,8 +5,8 @@ use crate::reader::{
 use super::{
     buffer::Buffer, class_access_flag::ClassAccessFlag, class_file::ClassFile,
     class_file_error::ClassFileError, class_file_version::ClassFileVersion,
-    constant_pool::ConstantPool, constant_tag::ConstantTag, jvm_constants::JAVA_CLASSFILE_MAGIC,
-    vm_symbols::VmSymbols,
+    constant_pool::ConstantPool, constant_tag::ConstantTag, instance_klass::InstanceKlass,
+    jvm_constants::JAVA_CLASSFILE_MAGIC, vm_symbols::VmSymbols,
 };
 
 pub struct ClassFileParser<'a> {
@@ -58,7 +58,7 @@ impl<'a> ClassFileParser<'a> {
             cp_size > 1,
             &format!("Illegal constant pool size {}.", cp_size),
         )?;
-        self.class_file.constant_pool = ConstantPool::new(cp_size as usize);
+        self.class_file.constant_pool = ConstantPool::new(cp_size);
         let mut index = 1;
         while index < cp_size {
             let tag = self.buffer.get_u8_fast();
@@ -68,14 +68,14 @@ impl<'a> ClassFileParser<'a> {
                     let name_index = self.buffer.get_u16_fast();
                     self.class_file
                         .constant_pool
-                        .klass_index_at_put(index as usize, name_index);
+                        .klass_index_at_put(index, name_index);
                 }
                 Some(ConstantTag::JVM_CONSTANT_Fieldref) => {
                     self.buffer.guarantee_more(5);
                     let class_index = self.buffer.get_u16_fast();
                     let name_and_type_index = self.buffer.get_u16_fast();
                     self.class_file.constant_pool.field_at_put(
-                        index as usize,
+                        index,
                         class_index,
                         name_and_type_index,
                     );
@@ -85,7 +85,7 @@ impl<'a> ClassFileParser<'a> {
                     let class_index = self.buffer.get_u16_fast();
                     let name_and_type_index = self.buffer.get_u16_fast();
                     self.class_file.constant_pool.method_at_put(
-                        index as usize,
+                        index,
                         class_index,
                         name_and_type_index,
                     );
@@ -95,7 +95,7 @@ impl<'a> ClassFileParser<'a> {
                     let class_index = self.buffer.get_u16_fast();
                     let name_and_type_index = self.buffer.get_u16_fast();
                     self.class_file.constant_pool.interface_method_at_put(
-                        index as usize,
+                        index,
                         class_index,
                         name_and_type_index,
                     );
@@ -105,7 +105,7 @@ impl<'a> ClassFileParser<'a> {
                     let string_index = self.buffer.get_u16_fast();
                     self.class_file
                         .constant_pool
-                        .string_index_at_put(index as usize, string_index);
+                        .string_index_at_put(index, string_index);
                 }
                 Some(ConstantTag::JVM_CONSTANT_MethodHandle) => {
                     let major_version = self.class_file.major_version;
@@ -117,11 +117,9 @@ impl<'a> ClassFileParser<'a> {
                     self.buffer.guarantee_more(4);
                     let ref_kind = self.buffer.get_u8_fast();
                     let ref_index = self.buffer.get_u16_fast();
-                    self.class_file.constant_pool.method_handle_index_at_put(
-                        index as usize,
-                        ref_kind,
-                        ref_index,
-                    );
+                    self.class_file
+                        .constant_pool
+                        .method_handle_index_at_put(index, ref_kind, ref_index);
                 }
                 Some(ConstantTag::JVM_CONSTANT_MethodType) => {
                     let major_version = self.class_file.major_version;
@@ -134,7 +132,7 @@ impl<'a> ClassFileParser<'a> {
                     let signature_index = self.buffer.get_u16_fast();
                     self.class_file
                         .constant_pool
-                        .method_type_index_at_put(index as usize, signature_index);
+                        .method_type_index_at_put(index, signature_index);
                 }
                 Some(ConstantTag::JVM_CONSTANT_Dynamic) => {
                     let major_version = self.class_file.major_version;
@@ -147,7 +145,7 @@ impl<'a> ClassFileParser<'a> {
                     let bootstrap_specifier_index = self.buffer.get_u16_fast();
                     let name_and_type_index = self.buffer.get_u16_fast();
                     self.class_file.constant_pool.dynamic_constant_at_put(
-                        index as usize,
+                        index,
                         bootstrap_specifier_index,
                         name_and_type_index,
                     );
@@ -163,7 +161,7 @@ impl<'a> ClassFileParser<'a> {
                     let bootstrap_specifier_index = self.buffer.get_u16_fast();
                     let name_and_type_index = self.buffer.get_u16_fast();
                     self.class_file.constant_pool.invoke_dynamic_at_put(
-                        index as usize,
+                        index,
                         bootstrap_specifier_index,
                         name_and_type_index,
                     );
@@ -171,16 +169,12 @@ impl<'a> ClassFileParser<'a> {
                 Some(ConstantTag::JVM_CONSTANT_Integer) => {
                     self.buffer.guarantee_more(5);
                     let bytes = self.buffer.get_u32_fast();
-                    self.class_file
-                        .constant_pool
-                        .int_at_put(index as usize, bytes);
+                    self.class_file.constant_pool.int_at_put(index, bytes);
                 }
                 Some(ConstantTag::JVM_CONSTANT_Float) => {
                     self.buffer.guarantee_more(5);
                     let bytes = self.buffer.get_u32_fast();
-                    self.class_file
-                        .constant_pool
-                        .float_at_put(index as usize, bytes);
+                    self.class_file.constant_pool.float_at_put(index, bytes);
                 }
                 Some(ConstantTag::JVM_CONSTANT_Long) => {
                     self.guarantee_property(
@@ -189,9 +183,7 @@ impl<'a> ClassFileParser<'a> {
                     )?;
                     self.buffer.guarantee_more(9);
                     let bytes = self.buffer.get_u64_fast();
-                    self.class_file
-                        .constant_pool
-                        .long_at_put(index as usize, bytes);
+                    self.class_file.constant_pool.long_at_put(index, bytes);
                     index += 1;
                 }
                 Some(ConstantTag::JVM_CONSTANT_Double) => {
@@ -201,9 +193,7 @@ impl<'a> ClassFileParser<'a> {
                     )?;
                     self.buffer.guarantee_more(9);
                     let bytes = self.buffer.get_u64_fast();
-                    self.class_file
-                        .constant_pool
-                        .double_at_put(index as usize, bytes);
+                    self.class_file.constant_pool.double_at_put(index, bytes);
                     index += 1;
                 }
                 Some(ConstantTag::JVM_CONSTANT_NameAndType) => {
@@ -211,7 +201,7 @@ impl<'a> ClassFileParser<'a> {
                     let name_index = self.buffer.get_u16_fast();
                     let signature_index = self.buffer.get_u16_fast();
                     self.class_file.constant_pool.name_and_type_at_put(
-                        index as usize,
+                        index,
                         name_index,
                         signature_index,
                     );
@@ -222,18 +212,13 @@ impl<'a> ClassFileParser<'a> {
                     self.buffer.guarantee_more((utf8_length + 1) as usize);
                     let utf8_bytes = self.buffer.get_u8_array_fast(utf8_length as usize);
                     match SymbolTable::lookup_only(&utf8_bytes.to_vec()) {
-                        Some(symbol) => self
-                            .class_file
-                            .constant_pool
-                            .symbol_at_put(index as usize, symbol),
+                        Some(symbol) => self.class_file.constant_pool.symbol_at_put(index, symbol),
                         None => {
                             let result = SymbolTable::new_symbol(
                                 utf8_bytes.to_vec(),
                                 Symbol::new(utf8_bytes.to_vec()),
                             );
-                            self.class_file
-                                .constant_pool
-                                .symbol_at_put(index as usize, result);
+                            self.class_file.constant_pool.symbol_at_put(index, result);
                         }
                     }
                 }
@@ -250,24 +235,21 @@ impl<'a> ClassFileParser<'a> {
         let mut index = 1;
         let mut num_klasses = 0;
         while index < cp_size {
-            match *self.class_file.constant_pool.tag_at(index as usize) {
+            match *self.class_file.constant_pool.tag_at(index) {
                 ConstantTag::JVM_CONSTANT_Fieldref
                 | ConstantTag::JVM_CONSTANT_Methodref
                 | ConstantTag::JVM_CONSTANT_InterfaceMethodref => {
-                    let klass_ref_index = self
-                        .class_file
-                        .constant_pool
-                        .klass_ref_index_at(index as usize);
+                    let klass_ref_index = self.class_file.constant_pool.klass_ref_index_at(index);
                     let name_and_type_ref_index = self
                         .class_file
                         .constant_pool
-                        .name_and_type_ref_index_at(index as usize);
+                        .name_and_type_ref_index_at(index);
                     self.guarantee_property(
-                        self.valid_klass_reference_at(klass_ref_index as usize),
+                        self.valid_klass_reference_at(klass_ref_index),
                         &format!("Invalid constant pool index {}.", klass_ref_index),
                     )?;
                     self.guarantee_property(
-                        self.valid_name_and_type_reference_at(name_and_type_ref_index as usize),
+                        self.valid_name_and_type_reference_at(name_and_type_ref_index),
                         &format!("Invalid constant pool index {}.", name_and_type_ref_index),
                     )?;
                 }
@@ -275,77 +257,58 @@ impl<'a> ClassFileParser<'a> {
                 ConstantTag::JVM_CONSTANT_Long | ConstantTag::JVM_CONSTANT_Double => {
                     index += 1;
                     self.guarantee_property(
-                        index < cp_size
-                            && self
-                                .class_file
-                                .constant_pool
-                                .tag_at(index as usize)
-                                .is_invalid(),
+                        index < cp_size && self.class_file.constant_pool.tag_at(index).is_invalid(),
                         &format!("Improper constant long/double index {}.", index),
                     )?;
                 }
                 ConstantTag::JVM_CONSTANT_NameAndType => {
-                    let name_ref_index = self
-                        .class_file
-                        .constant_pool
-                        .name_ref_index_at(index as usize);
-                    let signature_ref_index = self
-                        .class_file
-                        .constant_pool
-                        .signature_ref_index_at(index as usize);
+                    let name_ref_index = self.class_file.constant_pool.name_ref_index_at(index);
+                    let signature_ref_index =
+                        self.class_file.constant_pool.signature_ref_index_at(index);
                     self.guarantee_property(
-                        self.valid_symbol_at(name_ref_index as usize),
+                        self.valid_symbol_at(name_ref_index),
                         &format!("Invalid constant pool index {}.", name_ref_index),
                     )?;
                     self.guarantee_property(
-                        self.valid_symbol_at(signature_ref_index as usize),
+                        self.valid_symbol_at(signature_ref_index),
                         &format!("Invalid constant pool index {}.", signature_ref_index),
                     )?;
                 }
                 ConstantTag::JVM_CONSTANT_ClassIndex => {
-                    let class_index = self.class_file.constant_pool.klass_index_at(index as usize);
+                    let class_index = self.class_file.constant_pool.klass_index_at(index);
                     self.guarantee_property(
-                        self.valid_symbol_at(class_index as usize),
+                        self.valid_symbol_at(class_index),
                         &format!("Invalid constant index {}.", class_index),
                     )?;
                     self.class_file.constant_pool.unresolved_klass_at_put(
-                        index as usize,
+                        index,
                         class_index,
                         num_klasses,
                     );
                     num_klasses += 1;
                 }
                 ConstantTag::JVM_CONSTANT_StringIndex => {
-                    let string_index = self
-                        .class_file
-                        .constant_pool
-                        .string_index_at(index as usize);
+                    let string_index = self.class_file.constant_pool.string_index_at(index);
                     self.guarantee_property(
-                        self.valid_symbol_at(string_index as usize),
+                        self.valid_symbol_at(string_index),
                         &format!("Invalid constant pool index {}.", string_index),
                     )?;
-                    let symbol = self
-                        .class_file
-                        .constant_pool
-                        .symbol_at(string_index as usize);
+                    let symbol = self.class_file.constant_pool.symbol_at(string_index);
                     self.class_file
                         .constant_pool
-                        .unresolved_string_at_put(index as usize, symbol);
+                        .unresolved_string_at_put(index, symbol);
                 }
                 ConstantTag::JVM_CONSTANT_MethodHandle => {
-                    let ref_index = self
-                        .class_file
-                        .constant_pool
-                        .method_handle_index_at(index as usize);
+                    let ref_index = self.class_file.constant_pool.method_handle_index_at(index);
                     self.guarantee_property(
-                        self.valid_cp_range(ref_index as usize),
+                        self.valid_cp_range(ref_index),
                         &format!("Invalid constant pool index {}.", ref_index),
                     )?;
-                    let tag = self.class_file.constant_pool.tag_at(ref_index as usize);
+                    let tag = self.class_file.constant_pool.tag_at(ref_index);
                     let ref_kind = self
                         .class_file
                         .constant_pool
-                        .method_handle_ref_kind_at(index as usize);
+                        .method_handle_ref_kind_at(index);
                     match ReferenceKind::from(ref_kind) {
                         Some(ReferenceKind::JVM_REF_getField)
                         | Some(ReferenceKind::JVM_REF_getStatic)
@@ -381,12 +344,9 @@ impl<'a> ClassFileParser<'a> {
                     }
                 }
                 ConstantTag::JVM_CONSTANT_MethodType => {
-                    let ref_index = self
-                        .class_file
-                        .constant_pool
-                        .method_type_index_at(index as usize);
+                    let ref_index = self.class_file.constant_pool.method_type_index_at(index);
                     self.guarantee_property(
-                        self.valid_symbol_at(ref_index as usize),
+                        self.valid_symbol_at(ref_index),
                         &format!("Invalid constant pool index {}.", ref_index),
                     )?;
                 }
@@ -394,14 +354,13 @@ impl<'a> ClassFileParser<'a> {
                     let name_and_type_ref_index = self
                         .class_file
                         .constant_pool
-                        .bootstrap_name_and_type_ref_index_at(index as usize);
+                        .bootstrap_name_and_type_ref_index_at(index);
                     let tag = self
                         .class_file
                         .constant_pool
-                        .tag_at(name_and_type_ref_index as usize);
+                        .tag_at(name_and_type_ref_index);
                     self.guarantee_property(
-                        self.valid_cp_range(name_and_type_ref_index as usize)
-                            && tag.is_name_and_type(),
+                        self.valid_cp_range(name_and_type_ref_index) && tag.is_name_and_type(),
                         &format!("Invalid constant pool index {}.", name_and_type_ref_index),
                     )?;
                     self.class_file.constant_pool.set_has_dynamic_constant();
@@ -410,20 +369,19 @@ impl<'a> ClassFileParser<'a> {
                     let name_and_type_ref_index = self
                         .class_file
                         .constant_pool
-                        .bootstrap_name_and_type_ref_index_at(index as usize);
+                        .bootstrap_name_and_type_ref_index_at(index);
                     let tag = self
                         .class_file
                         .constant_pool
-                        .tag_at(name_and_type_ref_index as usize);
+                        .tag_at(name_and_type_ref_index);
                     self.guarantee_property(
-                        self.valid_cp_range(name_and_type_ref_index as usize)
-                            && tag.is_name_and_type(),
+                        self.valid_cp_range(name_and_type_ref_index) && tag.is_name_and_type(),
                         &format!("Invalid constant pool index {}.", name_and_type_ref_index),
                     )?;
                 }
                 _ => panic!(
                     "Bad constant pool tag value {:?}.",
-                    self.class_file.constant_pool.tag_at(index as usize)
+                    self.class_file.constant_pool.tag_at(index)
                 ),
             }
         }
@@ -434,7 +392,7 @@ impl<'a> ClassFileParser<'a> {
         Ok(())
     }
 
-    fn valid_klass_reference_at(&self, index: usize) -> bool {
+    fn valid_klass_reference_at(&self, index: u16) -> bool {
         self.class_file.constant_pool.is_within_bounds(index)
             && self
                 .class_file
@@ -443,7 +401,7 @@ impl<'a> ClassFileParser<'a> {
                 .is_klass_or_klass_reference()
     }
 
-    fn valid_name_and_type_reference_at(&self, index: usize) -> bool {
+    fn valid_name_and_type_reference_at(&self, index: u16) -> bool {
         self.valid_cp_range(index)
             && self
                 .class_file
@@ -452,11 +410,11 @@ impl<'a> ClassFileParser<'a> {
                 .is_name_and_type()
     }
 
-    fn valid_cp_range(&self, index: usize) -> bool {
+    fn valid_cp_range(&self, index: u16) -> bool {
         index > 0 && index < self.class_file.constant_pool.length()
     }
 
-    fn valid_symbol_at(&self, index: usize) -> bool {
+    fn valid_symbol_at(&self, index: u16) -> bool {
         self.class_file.constant_pool.is_within_bounds(index)
             && self.class_file.constant_pool.tag_at(index).is_utf8()
     }
@@ -487,7 +445,7 @@ impl<'a> ClassFileParser<'a> {
         self.class_file.class_name = self
             .class_file
             .constant_pool
-            .klass_name_at(self.class_file.this_class_index as usize);
+            .klass_name_at(self.class_file.this_class_index);
     }
 
     fn parse_super_class(&mut self) -> Result<(), ClassFileError> {
@@ -501,6 +459,23 @@ impl<'a> ClassFileParser<'a> {
                     super_class_index
                 ),
             )?;
+        } else {
+            self.guarantee_property(
+                self.valid_klass_reference_at(super_class_index),
+                &format!("Invalid superclass index {}.", super_class_index),
+            )?;
+            if self
+                .class_file
+                .constant_pool
+                .tag_at(super_class_index)
+                .is_klass()
+            {
+                self.class_file.super_class = Some(InstanceKlass::cast(
+                    self.class_file
+                        .constant_pool
+                        .resolved_klass_at(super_class_index),
+                ));
+            }
         }
         self.class_file.super_class_index = super_class_index;
         Ok(())

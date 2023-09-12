@@ -9,6 +9,7 @@ pub mod constant_pool;
 pub mod constant_tag;
 pub mod field_access_flag;
 pub mod field_info;
+pub mod instance_klass;
 pub mod jvm_constants;
 pub mod klass;
 pub mod macro_utils;

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::{
     attribute::Attribute, constant_pool::ConstantPool, field_info::FieldInfo,
-    method_info::MethodInfo, symbol::Symbol,
+    instance_klass::InstanceKlass, method_info::MethodInfo, symbol::Symbol,
 };
 
 #[derive(Debug, Default)]
@@ -14,6 +14,7 @@ pub struct ClassFile {
     pub class_name: Arc<Symbol>,
     pub this_class_index: u16,
     pub super_class_index: u16,
+    pub super_class: Option<InstanceKlass>,
     pub interfaces: Option<Vec<u16>>,
     pub fields_count: u16,
     pub fields: Vec<FieldInfo>,
