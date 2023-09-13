@@ -1,6 +1,8 @@
+use std::sync::Arc;
 use crate::reader::{
     reference_kind::ReferenceKind, symbol::Symbol, symbol_table::SymbolTable, verifier::Verifier,
 };
+use crate::reader::klass::Klass;
 
 use super::{
     buffer::Buffer, class_access_flag::ClassAccessFlag, class_file::ClassFile,
@@ -27,7 +29,7 @@ impl<'a> ClassFileParser<'a> {
         self.parse_constant_pool()?;
         self.parse_access_flags()?;
         self.parse_this_class();
-        self.parse_super_class();
+        self.parse_super_class()?;
         self.parse_interfaces();
         Ok(())
     }
@@ -481,11 +483,22 @@ impl<'a> ClassFileParser<'a> {
         Ok(())
     }
 
-    fn parse_interfaces(&mut self) {
+    fn parse_interfaces(&mut self) -> Result<(), ClassFileError> {
         self.buffer.guarantee_more(2);
         let itfs_len = self.buffer.get_u16_fast();
         for index in 0..itfs_len {
-            let interface_index = self.buffer.get_u16_fast();
+            let interf: &Klass;
+            let interface_index = self.buffer.get_u16();
+            self.guarantee_property(self.valid_klass_reference_at(interface_index),
+                                    &format!("Interface name has bad constant pool index {}.", interface_index))?;
+            if self.class_file.constant_pool.tag_at(interface_index).is_klass() {
+                interf = self.class_file.constant_pool.resolved_klass_at(interface_index);
+            } else {
+                let symbol = self.class_file.constant_pool.klass_name_at(interface_index);
+
+            }
+            self.class_file.interfaces.push(InstanceKlass::cast(interf))
         }
+        Ok(())
     }
 }

@@ -23,10 +23,10 @@ enum ConstantValue {
 
 #[repr(u16)]
 enum Flag {
-    has_preresolution = 1,
-    on_stack = 2,
-    is_shared = 4,
-    has_dynamic_constant = 8,
+    HasPreresolution = 1,
+    OnStack = 2,
+    IsShared = 4,
+    HasDynamicConstant = 8,
 }
 
 impl ConstantPool {
@@ -53,7 +53,7 @@ impl ConstantPool {
     }
 
     pub fn set_has_dynamic_constant(&mut self) {
-        self.flags |= Flag::has_dynamic_constant as u16
+        self.flags |= Flag::HasDynamicConstant as u16
     }
 
     pub fn klass_index_at_put(&mut self, which: u16, name_index: u16) {
@@ -201,7 +201,7 @@ impl ConstantPool {
     }
 
     pub fn klass_name_at(&self, which: u16) -> Arc<Symbol> {
-        self.symbol_at(self.klass_slot_at(which))
+        self.symbol_at(self.klass_slot_at(which).0)
     }
 
     pub fn symbol_at(&self, which: u16) -> Arc<Symbol> {
@@ -211,9 +211,10 @@ impl ConstantPool {
         }
     }
 
-    pub fn klass_slot_at(&self, which: u16) -> u16 {
+    pub fn klass_slot_at(&self, which: u16) -> (u16, u16) {
         match self.values.get(which as usize) {
-            Some(ConstantValue::JInt(value)) => (value >> 16) as u16,
+            Some(ConstantValue::JInt(value)) => (ConstantPool::extract_low_u16(value),
+                                                 ConstantPool::extract_high_u16(value)),
             _ => panic!("invalid data in constant pool"),
         }
     }

@@ -15,7 +15,7 @@ pub struct ClassFile {
     pub this_class_index: u16,
     pub super_class_index: u16,
     pub super_class: Option<InstanceKlass>,
-    pub interfaces: Option<Vec<u16>>,
+    pub interfaces: Vec<InstanceKlass>,
     pub fields_count: u16,
     pub fields: Vec<FieldInfo>,
     pub methods_count: u16,
