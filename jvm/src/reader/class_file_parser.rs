@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use crate::reader::klass::Klass;
 use crate::reader::{
     reference_kind::ReferenceKind, symbol::Symbol, symbol_table::SymbolTable, verifier::Verifier,
 };
-use crate::reader::klass::Klass;
+use std::sync::Arc;
 
 use super::{
     buffer::Buffer, class_access_flag::ClassAccessFlag, class_file::ClassFile,
@@ -489,15 +489,27 @@ impl<'a> ClassFileParser<'a> {
         for index in 0..itfs_len {
             let interf: &Klass;
             let interface_index = self.buffer.get_u16();
-            self.guarantee_property(self.valid_klass_reference_at(interface_index),
-                                    &format!("Interface name has bad constant pool index {}.", interface_index))?;
-            if self.class_file.constant_pool.tag_at(interface_index).is_klass() {
-                interf = self.class_file.constant_pool.resolved_klass_at(interface_index);
+            self.guarantee_property(
+                self.valid_klass_reference_at(interface_index),
+                &format!(
+                    "Interface name has bad constant pool index {}.",
+                    interface_index
+                ),
+            )?;
+            if self
+                .class_file
+                .constant_pool
+                .tag_at(interface_index)
+                .is_klass()
+            {
+                interf = self
+                    .class_file
+                    .constant_pool
+                    .resolved_klass_at(interface_index);
             } else {
                 let symbol = self.class_file.constant_pool.klass_name_at(interface_index);
-
             }
-            self.class_file.interfaces.push(InstanceKlass::cast(interf))
+            self.class_file.interfaces.push(InstanceKlass::cast(interf));
         }
         Ok(())
     }
