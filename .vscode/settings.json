@@ -1,6 +1,4 @@
 {
-	"cSpell.words": [
-		"Fieldref",
-		"Methodref"
-	]
+  "cSpell.words": ["Fieldref", "Methodref"],
+  "rust-analyzer.linkedProjects": [".\\jvm\\Cargo.toml"]
 }

@@ -1,1 +1,0 @@
-pub const JAVA_CLASSFILE_MAGIC: u32 = 0xCAFEBABEu32;
