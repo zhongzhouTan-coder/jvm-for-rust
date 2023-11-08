@@ -2,10 +2,9 @@ use std::{
     collections::HashMap,
     fs::{File, OpenOptions},
     mem,
-    os::windows::prelude::{FileExt, MetadataExt},
     sync::{Arc, Mutex},
 };
-
+use std::io::{Read, Seek, SeekFrom};
 use super::{
     image_decompressor::{Decompressors, ImageDecompressor},
     jimage_error::JImageError,
@@ -71,11 +70,11 @@ impl ImageFileReader {
         }
         let file = Arc::new(file.unwrap());
         self.file = Some(Arc::clone(&file));
-        self.file_size = file.metadata().unwrap().file_size();
+        self.file_size = file.metadata().unwrap().len();
         let header_size = mem::size_of::<ImageHeader>();
         let mut buf: [u8; mem::size_of::<ImageHeader>()] = [0u8; mem::size_of::<ImageHeader>()];
-        if self.file_size < header_size as u64
-            || file.seek_read(&mut buf[..], 0).unwrap() != header_size
+        if self.file_size < header_size as u64 || file.seek(SeekFrom::Start(0)).unwrap() != 0
+            || file.read(&mut buf[..]).unwrap() != header_size
         {
             return Err(JImageError::ImageFileOpenError);
         }
@@ -213,9 +212,9 @@ impl ImageFileReader {
     }
 
     fn read_at(&self, data: &mut Vec<u8>, size: u64, offset: u64) {
-        if let Some(file) = self.file.as_ref() {
+        if let Some(file) = self.file.as_mut() {
             assert!(
-                file.seek_read(data, offset).unwrap() == size as usize,
+                file.seek(SeekFrom::Start(offset)).unwrap() != offset || file.read(data).unwrap() == size as usize,
                 "fail to read enough data!"
             );
         }

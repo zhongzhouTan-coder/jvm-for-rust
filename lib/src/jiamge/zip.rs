@@ -1,7 +1,9 @@
-use std::ffi::{c_void, CString, OsString};
+#[cfg(not(windows))]
+use std::ffi::{c_char, c_int, c_void, CString};
 
 #[cfg(windows)]
 use std::os::windows::prelude::*;
+
 
 fn find_entry(name: &str) -> Option<*mut c_void> {
     #[cfg(windows)]
@@ -40,13 +42,16 @@ fn find_entry(name: &str) -> Option<*mut c_void> {
             fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
         }
 
+        let name = CString::new(name).unwrap();
+
         let lib = if cfg!(linux) {
-            CString::new("libzip.so")
+            CString::new("libzip.so").unwrap()
         } else {
-            CString::new("libzip.dylib")
+            CString::new("libzip.dylib").unwrap()
         };
-        let addr = unsafe { dlopen(lib.as_ptr(), lib::RTLD_LAZY | lib::RTLD_GLOBAL) };
-        unsafe { dlsym(addr, name.as_ptr()) }
+        let addr = unsafe { dlopen(lib.as_ptr(), libc::RTLD_LAZY | libc::RTLD_GLOBAL) };
+        let result = unsafe { dlsym(addr, name.as_ptr()) };
+        Some(result)
     }
 }
 
