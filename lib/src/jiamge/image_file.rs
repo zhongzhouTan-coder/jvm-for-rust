@@ -1,20 +1,19 @@
+use super::{
+    image_decompressor::{Decompressors, ImageDecompressor},
+    jimage_error::JImageError,
+};
+use once_cell::sync::OnceCell;
+use std::io::{Read, Seek, SeekFrom};
 use std::{
     collections::HashMap,
     fs::{File, OpenOptions},
     mem,
     sync::{Arc, Mutex},
 };
-use std::io::{Read, Seek, SeekFrom};
-use super::{
-    image_decompressor::{Decompressors, ImageDecompressor},
-    jimage_error::JImageError,
-};
-use once_cell::sync::OnceCell;
 
 #[derive(Default)]
 pub struct ImageFileReader {
     name: String,
-    file: Option<Arc<File>>,
     file_size: u64,
     header: ImageHeader,
     index_size: usize,
@@ -22,6 +21,7 @@ pub struct ImageFileReader {
     offsets_table: Option<Arc<Vec<u32>>>,
     location_bytes: Option<Arc<Vec<u8>>>,
     string_bytes: Option<Arc<Vec<u8>>>,
+    resource_bytes: Option<Arc<Vec<u8>>>,
 }
 
 static INSTANCE: OnceCell<Mutex<HashMap<String, Arc<ImageFileReader>>>> = OnceCell::new();
@@ -30,7 +30,6 @@ impl ImageFileReader {
     pub fn new(name: String) -> Self {
         ImageFileReader {
             name,
-            file: None,
             file_size: 0,
             header: ImageHeader::default(),
             index_size: 0,
@@ -38,6 +37,7 @@ impl ImageFileReader {
             offsets_table: None,
             location_bytes: None,
             string_bytes: None,
+            resource_bytes: None,
         }
     }
 
@@ -61,24 +61,22 @@ impl ImageFileReader {
     }
 
     fn open_image(&mut self) -> Result<(), JImageError> {
-        let file = OpenOptions::new()
+        let mut file = OpenOptions::new()
             .read(true)
             .write(false)
-            .open(self.name.clone());
-        if file.is_err() {
-            return Err(JImageError::ImageFileOpenError);
-        }
-        let file = Arc::new(file.unwrap());
-        self.file = Some(Arc::clone(&file));
+            .open(self.name.clone())
+            .map_err(|err| JImageError::ImageFileOpenError)?;
         self.file_size = file.metadata().unwrap().len();
-        let header_size = mem::size_of::<ImageHeader>();
-        let mut buf: [u8; mem::size_of::<ImageHeader>()] = [0u8; mem::size_of::<ImageHeader>()];
-        if self.file_size < header_size as u64 || file.seek(SeekFrom::Start(0)).unwrap() != 0
-            || file.read(&mut buf[..]).unwrap() != header_size
-        {
+        let mut buf: Vec<u8> = Vec::new();
+        assert!(
+            file.read_to_end(&mut buf).unwrap() == self.file_size as usize,
+            "fail to read data from file.",
+        );
+        let header_size = self.header_size();
+        if self.file_size < header_size as u64 {
             return Err(JImageError::ImageFileOpenError);
         }
-        self.header = ImageHeader::read_from_bytes(buf);
+        self.header = ImageHeader::read_from_bytes(buf[0..header_size].try_into().unwrap());
         self.index_size = self.index_size();
         if self.file_size < self.index_size as u64
             || self.header.magic() != 0xCAFEDADA
@@ -87,13 +85,12 @@ impl ImageFileReader {
         {
             return Err(JImageError::ImageFileOpenError);
         }
-        let mut buf: Vec<u8> = vec![0u8; self.index_size];
-        self.read_at(&mut buf, header_size as u64, 0);
         let length = self.table_length() as usize;
-        let redirect_table_offset = 0 as usize;
+        let redirect_table_offset = self.header_size();
         let offsets_table_offset = redirect_table_offset + length * mem::size_of::<u32>();
         let location_bytes_offset = offsets_table_offset + length * mem::size_of::<u32>();
         let string_bytes_offset = location_bytes_offset + self.locations_size() as usize;
+        let resource_bytes_offset = string_bytes_offset + self.string_size() as usize;
         self.redirect_table = Some(Arc::new(
             buf[redirect_table_offset..offsets_table_offset]
                 .chunks_exact(4)
@@ -111,7 +108,10 @@ impl ImageFileReader {
         self.location_bytes = Some(Arc::new(
             buf[location_bytes_offset..string_bytes_offset].to_vec(),
         ));
-        self.string_bytes = Some(Arc::new(buf[string_bytes_offset..].to_vec()));
+        self.string_bytes = Some(Arc::new(
+            buf[string_bytes_offset..resource_bytes_offset].to_vec(),
+        ));
+        self.resource_bytes = Some(Arc::new(buf[resource_bytes_offset..].to_vec()));
         Ok(())
     }
 
@@ -166,30 +166,26 @@ impl ImageFileReader {
         let offset = location.get_attribute(ImageLocation::ATTRIBUTE_OFFSET);
         let uncompressed_size = location.get_attribute(ImageLocation::ATTRIBUTE_UNCOMPRESSED);
         let compressed_size = location.get_attribute(ImageLocation::ATTRIBUTE_COMPRESSED);
-        if compressed_size != 0 {
-            let mut compressed_data: Vec<u8> = vec![0; compressed_size as usize];
-            self.read_at(
-                &mut compressed_data,
-                compressed_size,
-                self.index_size as u64 + offset,
-            );
-            let image_strings = ImageStrings::new(
-                Arc::clone(self.string_bytes.as_ref().unwrap()),
-                self.header.string_size(),
-            );
-            return Decompressors::decompress_resource(
-                &compressed_data,
-                uncompressed_size,
-                &image_strings,
-            );
-        } else {
-            let mut uncompressed_data: Vec<u8> = vec![0; uncompressed_size as usize];
-            self.read_at(
-                &mut uncompressed_data,
-                uncompressed_size,
-                self.index_size as u64 + offset,
-            );
-            Some(uncompressed_data)
+        assert!(self.resource_bytes.is_some(), "no resource data loaded.");
+        let resource_bytes = Arc::clone(self.resource_bytes.as_ref().unwrap());
+        match compressed_size {
+            0 => {
+                let end_offset = offset + compressed_size;
+                let compressed_data = resource_bytes[offset as usize..end_offset as usize].to_vec();
+                let image_strings = ImageStrings::new(
+                    Arc::clone(self.string_bytes.as_ref().unwrap()),
+                    self.header.string_size(),
+                );
+                Decompressors::decompress_resource(
+                    &compressed_data,
+                    uncompressed_size,
+                    &image_strings,
+                )
+            }
+            _ => {
+                let end_offset = uncompressed_size + offset;
+                Some(resource_bytes[offset as usize..end_offset as usize].to_vec())
+            }
         }
     }
 
@@ -211,13 +207,8 @@ impl ImageFileReader {
         self.header.string_size()
     }
 
-    fn read_at(&self, data: &mut Vec<u8>, size: u64, offset: u64) {
-        if let Some(file) = self.file.as_mut() {
-            assert!(
-                file.seek(SeekFrom::Start(offset)).unwrap() != offset || file.read(data).unwrap() == size as usize,
-                "fail to read enough data!"
-            );
-        }
+    fn header_size(&self) -> usize {
+        std::mem::size_of::<ImageHeader>()
     }
 }
 

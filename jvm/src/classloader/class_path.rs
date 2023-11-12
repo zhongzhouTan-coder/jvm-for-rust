@@ -1,7 +1,5 @@
 use std::{cell::RefCell, fs::File, io::BufReader};
 
-use zip::ZipArchive;
-
 use super::class_file_stream::ClassFileStream;
 
 pub struct ClassPathDirEntry {
@@ -10,7 +8,7 @@ pub struct ClassPathDirEntry {
 
 pub struct ClassPathZipEntry {
     zip_name: String,
-    zip: RefCell<ZipArchive<BufReader<File>>>,
+    zip: RefCell<BufReader<File>>,
 }
 
 pub struct ClassPathImageEntry {
@@ -50,7 +48,7 @@ impl ClassPathEntry for ClassPathZipEntry {
 }
 
 impl ClassPathZipEntry {
-    fn new(zip_name: String, zip: ZipArchive<BufReader<File>>) -> Self {
+    fn new(zip_name: String, zip: BufReader<File>) -> Self {
         ClassPathZipEntry {
             zip_name,
             zip: RefCell::new(zip),

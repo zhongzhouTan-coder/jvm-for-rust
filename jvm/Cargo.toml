@@ -8,4 +8,3 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.3.19", features = ["derive"] }
 once_cell = { version = "1.18.0" }
-zip = { version = "0.6.6", default-features = false }

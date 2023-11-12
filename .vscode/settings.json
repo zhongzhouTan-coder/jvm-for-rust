@@ -1,4 +1,7 @@
 {
   "cSpell.words": ["Fieldref", "Methodref"],
-  "rust-analyzer.linkedProjects": [".\\jvm\\Cargo.toml"]
+  "rust-analyzer.linkedProjects": [".\\jvm\\Cargo.toml"],
+  "files.associations": {
+    "zlib.h": "c"
+  }
 }
