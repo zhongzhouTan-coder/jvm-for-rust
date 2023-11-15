@@ -1,4 +1,6 @@
-use std::ffi::{c_char, c_int, c_longlong, c_ulonglong, c_void};
+use std::ffi::{c_char, c_int, c_longlong, c_ulonglong, c_void, CStr};
+
+use super::jimage_error::JImageError;
 
 #[link(name = "zip")]
 extern "C" {
@@ -17,6 +19,35 @@ extern "C" {
         in_len: c_longlong,
         pmsg: *mut *const c_char,
     ) -> c_ulonglong;
+}
+
+pub fn inflate(
+    out_buf: &mut Vec<u8>,
+    out_len: u64,
+    in_buf: &mut Vec<u8>,
+    in_len: u64,
+) -> Result<(), JImageError> {
+    let mut pmsg: *const c_char = std::ptr::null();
+    unsafe {
+        if zip_inflate(
+            out_buf.as_mut_ptr() as *mut c_void,
+            out_len as c_longlong,
+            in_buf.as_mut_ptr() as *mut c_void,
+            in_len as c_longlong,
+            &mut pmsg,
+        ) == 0
+        {
+            if !pmsg.is_null() {
+                return Err(JImageError::DecompressError(
+                    CStr::from_ptr(pmsg).to_str().unwrap().to_string(),
+                ));
+            }
+            return Err(JImageError::DecompressError(
+                "fail to decomrpess data.".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

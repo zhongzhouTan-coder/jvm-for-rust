@@ -1,3 +1,4 @@
 pub enum JImageError {
-    ImageFileOpenError,
+    FileOpenError,
+    DecompressError(String),
 }

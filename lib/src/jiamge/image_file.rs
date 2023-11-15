@@ -1,12 +1,9 @@
-use super::{
-    image_decompressor::{Decompressors, ImageDecompressor},
-    jimage_error::JImageError,
-};
+use super::{image_decompressor::Decompressors, jimage_error::JImageError};
 use once_cell::sync::OnceCell;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
 use std::{
     collections::HashMap,
-    fs::{File, OpenOptions},
+    fs::OpenOptions,
     mem,
     sync::{Arc, Mutex},
 };
@@ -65,7 +62,7 @@ impl ImageFileReader {
             .read(true)
             .write(false)
             .open(self.name.clone())
-            .map_err(|err| JImageError::ImageFileOpenError)?;
+            .map_err(|_| JImageError::FileOpenError)?;
         self.file_size = file.metadata().unwrap().len();
         let mut buf: Vec<u8> = Vec::new();
         assert!(
@@ -74,16 +71,16 @@ impl ImageFileReader {
         );
         let header_size = self.header_size();
         if self.file_size < header_size as u64 {
-            return Err(JImageError::ImageFileOpenError);
+            return Err(JImageError::FileOpenError);
         }
-        self.header = ImageHeader::read_from_bytes(buf[0..header_size].try_into().unwrap());
+        self.header = ImageHeader::read_from_bytes(&buf[0..header_size]);
         self.index_size = self.index_size();
         if self.file_size < self.index_size as u64
             || self.header.magic() != 0xCAFEDADA
             || self.header.major_version() != 1u32
             || self.header.minor_version() != 0u32
         {
-            return Err(JImageError::ImageFileOpenError);
+            return Err(JImageError::FileOpenError);
         }
         let length = self.table_length() as usize;
         let redirect_table_offset = self.header_size();
@@ -120,8 +117,16 @@ impl ImageFileReader {
         path.push_str(&package_name.replace("/", "."));
 
         if let Some(location) = ImageFileReader::find_location(&self, path) {
-            let size = location.get_attribute(ImageLocation::ATTRIBUTE_UNCOMPRESSED);
-            let mut content: Vec<u8> = vec![0; size as usize];
+            if let Some(content) = self.get_resource(&location) {
+                let mut offset: u32 = 0;
+                let mut iter = content.chunks_exact(8);
+                while let Some(chunk) = iter.next() {
+                    let is_empty: u32 = u32::from_ne_bytes(chunk[0..4].try_into().unwrap());
+                    offset = u32::from_ne_bytes(chunk[4..8].try_into().unwrap());
+                    break;
+                }
+                return self.get_strings().get(offset);
+            }
         }
         None
     }
@@ -132,29 +137,33 @@ impl ImageFileReader {
         let location_ref = Arc::clone(self.location_bytes.as_ref().unwrap());
         if let Some(index) = ImageStrings::find(path, redirect_ref, self.table_length()) {
             assert!(
-                index < offsets_ref.len() as i32,
-                "index exceeds offset count!"
+                (index as usize) < offsets_ref.len(),
+                "invalid offsets index."
             );
             let location_offset = offsets_ref[index as usize];
+            assert!(
+                (location_offset as usize) < location_ref.len(),
+                "invalid location offset."
+            );
             let mut attributes: [u64; 8] = [0; ImageLocation::ATTRIBUTE_COUNT as usize];
-            unsafe {
-                let mut _data = location_ref.as_ptr().add(location_offset as usize);
-                while !_data.is_null() && *_data != 0 {
-                    let byte = _data.read();
-                    let kind = byte >> 3;
-                    assert!(
-                        kind < ImageLocation::ATTRIBUTE_COUNT,
-                        "invalid attribute kind"
-                    );
-                    let len = (byte & 0x7) + 1;
-                    assert!(len > 0 && len < 8, "invalid attribute value length");
-                    let mut value: u64 = 0;
-                    for i in 1..=len {
-                        value <<= 8;
-                        value |= _data.add(i as usize).read() as u64;
-                    }
-                    attributes[kind as usize] = value;
-                    _data = _data.add((len + 1) as usize);
+            let mut index: usize = location_offset as usize;
+            while let Some(&byte) = location_ref.get(index) {
+                if byte == ImageLocation::ATTRIBUTE_END {
+                    break;
+                }
+                let kind = ImageLocation::attribute_kind(byte);
+                assert!(
+                    kind < ImageLocation::ATTRIBUTE_COUNT,
+                    "invalid attribute kind"
+                );
+                let len = ImageLocation::attribute_length(byte);
+                index += 1;
+                if let Some(values) = location_ref.get(index..index + len as usize) {
+                    attributes[kind as usize] = ImageLocation::attribute_value(values, len);
+                    index += len as usize;
+                } else {
+                    println!("invalid attribute value bytes.");
+                    return None;
                 }
             }
             return Some(ImageLocation::new(attributes));
@@ -163,30 +172,30 @@ impl ImageFileReader {
     }
 
     fn get_resource(&self, location: &ImageLocation) -> Option<Vec<u8>> {
-        let offset = location.get_attribute(ImageLocation::ATTRIBUTE_OFFSET);
-        let uncompressed_size = location.get_attribute(ImageLocation::ATTRIBUTE_UNCOMPRESSED);
-        let compressed_size = location.get_attribute(ImageLocation::ATTRIBUTE_COMPRESSED);
+        let start = location.get_attribute(ImageLocation::ATTRIBUTE_OFFSET) as usize;
+        let uncompressed_size =
+            location.get_attribute(ImageLocation::ATTRIBUTE_UNCOMPRESSED) as usize;
+        let compressed_size = location.get_attribute(ImageLocation::ATTRIBUTE_COMPRESSED) as usize;
         assert!(self.resource_bytes.is_some(), "no resource data loaded.");
         let resource_bytes = Arc::clone(self.resource_bytes.as_ref().unwrap());
-        match compressed_size {
-            0 => {
-                let end_offset = offset + compressed_size;
-                let compressed_data = resource_bytes[offset as usize..end_offset as usize].to_vec();
-                let image_strings = ImageStrings::new(
-                    Arc::clone(self.string_bytes.as_ref().unwrap()),
-                    self.header.string_size(),
-                );
-                Decompressors::decompress_resource(
-                    &compressed_data,
-                    uncompressed_size,
-                    &image_strings,
-                )
-            }
-            _ => {
-                let end_offset = uncompressed_size + offset;
-                Some(resource_bytes[offset as usize..end_offset as usize].to_vec())
-            }
+        let end = if compressed_size == 0 {
+            uncompressed_size + start
+        } else {
+            compressed_size + start
+        };
+        assert!(
+            end <= resource_bytes.len(),
+            "invalid index access to resource bytes."
+        );
+        let data = resource_bytes[start..end].to_vec();
+        if compressed_size != 0 {
+            return Decompressors::decompress_resource(
+                data,
+                uncompressed_size as u64,
+                self.get_strings(),
+            );
         }
+        Some(data)
     }
 
     fn index_size(&self) -> usize {
@@ -209,6 +218,14 @@ impl ImageFileReader {
 
     fn header_size(&self) -> usize {
         std::mem::size_of::<ImageHeader>()
+    }
+
+    fn get_strings(&self) -> ImageStrings {
+        assert!(self.string_bytes.is_some(), "No content of string bytes.");
+        ImageStrings {
+            data: Some(Arc::clone(self.string_bytes.as_ref().unwrap())),
+            size: self.header.string_size(),
+        }
     }
 }
 
@@ -238,10 +255,38 @@ impl ImageLocation {
         );
         self.attributes[kind as usize]
     }
+
+    #[inline]
+    fn attribute_length(data: u8) -> u8 {
+        (data & 0x7) + 1
+    }
+
+    #[inline]
+    fn attribute_kind(data: u8) -> u8 {
+        let kind: u8 = data >> 3;
+        assert!(
+            kind < ImageLocation::ATTRIBUTE_COUNT,
+            "invalid attribute kind."
+        );
+        kind
+    }
+
+    #[inline]
+    fn attribute_value(data: &[u8], n: u8) -> u64 {
+        assert!(
+            0 < n && n <= 8 && data.len() >= n as usize,
+            "invalid attribute value length."
+        );
+        let mut value: u64 = 0;
+        for i in 0..n {
+            value <<= 8;
+            value |= unsafe { *data.get_unchecked(i as usize) as u64 };
+        }
+        value
+    }
 }
 
 #[derive(Default, Debug)]
-#[repr(C)]
 pub struct ImageHeader {
     magic: u32,
     version: u32,
@@ -253,9 +298,15 @@ pub struct ImageHeader {
 }
 
 impl ImageHeader {
-    fn read_from_bytes(bytes: [u8; std::mem::size_of::<ImageHeader>()]) -> Self {
-        unsafe {
-            std::mem::transmute::<[u8; std::mem::size_of::<ImageHeader>()], ImageHeader>(bytes)
+    fn read_from_bytes(bytes: &[u8]) -> Self {
+        ImageHeader {
+            magic: u32::from_ne_bytes(bytes[0..4].try_into().unwrap()),
+            version: u32::from_ne_bytes(bytes[4..8].try_into().unwrap()),
+            flags: u32::from_ne_bytes(bytes[8..12].try_into().unwrap()),
+            resource_count: u32::from_ne_bytes(bytes[12..16].try_into().unwrap()),
+            table_length: u32::from_ne_bytes(bytes[16..20].try_into().unwrap()),
+            locations_size: u32::from_ne_bytes(bytes[20..24].try_into().unwrap()),
+            string_size: u32::from_ne_bytes(bytes[24..28].try_into().unwrap()),
         }
     }
 
@@ -303,15 +354,15 @@ impl ImageStrings {
         }
     }
 
-    fn find(name: String, redirect_table: Arc<Vec<i32>>, length: u32) -> Option<i32> {
+    fn find(name: String, redirect_table: Arc<Vec<i32>>, length: u32) -> Option<u32> {
         let mut hash_code = ImageStrings::hash_code(name.clone(), ImageStrings::HASH_MULTIPLIER);
         let index = hash_code % length;
         if let Some(&value) = redirect_table.get(index as usize) {
             if value > 0 {
                 hash_code = ImageStrings::hash_code(name, value as u32);
-                return Some((hash_code % length) as i32);
+                return Some(hash_code % length);
             } else if value < 0 {
-                return Some(-1 - value);
+                return Some((-1 - value) as u32);
             }
         }
         None
@@ -319,22 +370,18 @@ impl ImageStrings {
 
     fn hash_code(name: String, seed: u32) -> u32 {
         let bytes = name.bytes();
-        let mut value = seed;
+        let mut value = seed as u32;
         for byte in bytes {
-            value = (value * ImageStrings::HASH_MULTIPLIER) ^ byte as u32;
+            value = value.wrapping_mul(ImageStrings::HASH_MULTIPLIER) ^ (byte as u32);
         }
-
-        value & 0x7FFF_FFFF
+        value & 0x7FFF_FFFFu32
     }
 
-    pub fn get(&self, decompressor_name_offset: u32) -> Option<String> {
-        assert!(
-            decompressor_name_offset < self.size,
-            "offset exceeds string table size"
-        );
+    pub fn get(&self, offset: u32) -> Option<String> {
+        assert!(offset < self.size, "offset exceeds string table size");
         if let Some(data) = self.data.as_ref() {
             let mut bytes: Vec<u8> = Vec::new();
-            for byte in data.iter().skip(decompressor_name_offset as usize) {
+            for byte in data.iter().skip(offset as usize) {
                 if *byte == 0 {
                     break;
                 }
@@ -359,8 +406,12 @@ mod image_file {
                 true => format!("{}\\lib\\modules", java_home),
                 false => format!("{}/lib/modules", java_home),
             };
-            let result = ImageFileReader::open(name);
-            assert!(result.is_ok());
+            if let Ok(reader) = ImageFileReader::open(name) {
+                assert_eq!(
+                    reader.package_to_module("java/lang".to_string()),
+                    Some("java.base".to_string())
+                );
+            }
         }
     }
 }

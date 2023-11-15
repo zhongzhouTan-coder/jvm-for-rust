@@ -2,7 +2,7 @@ use std::sync::{Arc, Once};
 
 use once_cell::sync::OnceCell;
 
-use super::image_file::ImageStrings;
+use super::{image_file::ImageStrings, zip_utils::inflate};
 
 /// Compressed resource located in image have an header
 /// The header contains:
@@ -15,7 +15,6 @@ use super::image_file::ImageStrings;
 /// is_terminal: 1 the compressed content is terminal. Uncompressing it would create the actual resource
 /// 0 the compressed content is not terminal. Uncompressing it will result in a compressed content to be
 /// decompressed (This occurs when a stack of compressors have been used to compress the resource)
-#[derive(Default)]
 pub struct ResourceHeader {
     magic: u32,
     size: u64,
@@ -27,6 +26,21 @@ pub struct ResourceHeader {
 
 impl ResourceHeader {
     const RESOURCE_HEADER_MAGIC: u32 = 0xCAFEFAFAu32;
+
+    fn from_bytes(bytes: Vec<u8>) -> ResourceHeader {
+        assert!(
+            bytes.len() == std::mem::size_of::<ResourceHeader>(),
+            "invalid resource header data"
+        );
+        ResourceHeader {
+            magic: u32::from_ne_bytes(bytes[0..4].try_into().unwrap()),
+            size: u64::from_ne_bytes(bytes[4..12].try_into().unwrap()),
+            uncompressed_size: u64::from_ne_bytes(bytes[12..20].try_into().unwrap()),
+            decompressor_name_offset: u32::from_ne_bytes(bytes[20..24].try_into().unwrap()),
+            decompressor_config_offset: u32::from_ne_bytes(bytes[24..28].try_into().unwrap()),
+            is_terminal: bytes[28],
+        }
+    }
 }
 
 pub struct Decompressors {
@@ -50,67 +64,34 @@ impl Decompressors {
     }
 
     pub fn decompress_resource(
-        compressed_data: &Vec<u8>,
+        compressed_data: Vec<u8>,
         uncompressed_size: u64,
-        strings: &ImageStrings,
+        strings: ImageStrings,
     ) -> Option<Vec<u8>> {
-        let mut compressed_resource = compressed_data;
-        let mut uncompressed_data: Option<Vec<u8>> = None;
+        let mut data = compressed_data;
         loop {
-            let mut header = ResourceHeader::default();
-            let mut offset = 0;
-            header.magic = Decompressors::get_u32(compressed_resource, offset).unwrap();
-            offset += 4;
-            header.size = Decompressors::get_u64(compressed_resource, offset).unwrap();
-            offset += 8;
-            header.uncompressed_size = Decompressors::get_u64(compressed_resource, offset).unwrap();
-            offset += 8;
-            header.decompressor_name_offset =
-                Decompressors::get_u32(compressed_resource, offset).unwrap();
-            offset += 4;
-            header.decompressor_config_offset =
-                Decompressors::get_u32(compressed_resource, offset).unwrap();
-            offset += 4;
-            header.is_terminal = Decompressors::get_u8(compressed_resource, offset).unwrap();
+            let header_size = std::mem::size_of::<ResourceHeader>();
+            let header = ResourceHeader::from_bytes(data[0..header_size].to_vec());
             let has_header = header.magic == ResourceHeader::RESOURCE_HEADER_MAGIC;
             if !has_header {
                 break;
             }
             let decompressor_name = strings.get(header.decompressor_name_offset).unwrap();
-            if let Some(decompressor) = Decompressors::get_decompressor(&decompressor_name) {
-                if let Some(data) = decompressor.decompress_resource(
-                    compressed_resource,
-                    uncompressed_size,
-                    &header,
-                    strings,
-                ) {
-                    uncompressed_data = Some(data);
-                    compressed_resource = uncompressed_data.as_ref().unwrap();
-                };
-            }
+            let decompressor = Decompressors::get_decompressor(&decompressor_name)
+                .expect("unrecognized decompressor name.");
+            if let Some(content) =
+                decompressor.decompress_resource(data[header_size..].to_vec(), header, &strings)
+            {
+                data = content;
+            } else {
+                return None;
+            };
         }
-        uncompressed_data
-    }
-
-    fn get_u32(data: &Vec<u8>, index: usize) -> Option<u32> {
-        if let Some(bytes) = data.get(index..index + 4) {
-            return Some(u32::from_ne_bytes(bytes.try_into().unwrap()));
-        }
-        None
-    }
-
-    fn get_u64(data: &Vec<u8>, index: usize) -> Option<u64> {
-        if let Some(bytes) = data.get(index..index + 8) {
-            return Some(u64::from_ne_bytes(bytes.try_into().unwrap()));
-        }
-        None
-    }
-
-    fn get_u8(data: &Vec<u8>, index: usize) -> Option<u8> {
-        if let Some(bytes) = data.get(index) {
-            return Some(u8::from_ne_bytes([bytes.clone()]));
-        }
-        None
+        assert!(
+            data.len() == uncompressed_size as usize,
+            "fail to decompress compressed data."
+        );
+        Some(data)
     }
 }
 
@@ -125,9 +106,8 @@ pub trait ImageDecompressor: Sync + Send {
     fn get_name(&self) -> String;
     fn decompress_resource(
         &self,
-        compressed_data: &Vec<u8>,
-        uncompressed_size: u64,
-        resource_header: &ResourceHeader,
+        compressed_data: Vec<u8>,
+        resource_header: ResourceHeader,
         strings: &ImageStrings,
     ) -> Option<Vec<u8>>;
 }
@@ -143,12 +123,21 @@ impl ImageDecompressor for ZipDecompressor {
 
     fn decompress_resource(
         &self,
-        compressed_data: &Vec<u8>,
-        uncompressed_size: u64,
-        resource_header: &ResourceHeader,
+        compressed_data: Vec<u8>,
+        resource_header: ResourceHeader,
         strings: &ImageStrings,
     ) -> Option<Vec<u8>> {
-        todo!()
+        let mut in_buf = compressed_data;
+        let in_len: u64 = resource_header.size;
+        let mut out_buf: Vec<u8> = vec![0u8; resource_header.uncompressed_size as usize];
+        let out_len = resource_header.uncompressed_size;
+        if let Err(super::jimage_error::JImageError::DecompressError(msg)) =
+            inflate(&mut out_buf, out_len, &mut in_buf, in_len)
+        {
+            println!("{}", msg);
+            return None;
+        }
+        Some(out_buf)
     }
 }
 
@@ -171,9 +160,8 @@ impl ImageDecompressor for SharedStringDecompressor {
 
     fn decompress_resource(
         &self,
-        compressed_data: &Vec<u8>,
-        uncompressed_size: u64,
-        resource_header: &ResourceHeader,
+        compressed_data: Vec<u8>,
+        resource_header: ResourceHeader,
         strings: &ImageStrings,
     ) -> Option<Vec<u8>> {
         todo!()
