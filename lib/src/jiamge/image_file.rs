@@ -159,7 +159,6 @@ impl ImageFileReader {
         let compressed_size = location.get_attribute(ImageLocation::ATTRIBUTE_COMPRESSED) as usize;
         assert!(self.resources.is_some(), "no resource data loaded.");
         let resource_bytes = Arc::clone(self.resources.as_ref().unwrap());
-        let is_compressed = compressed_size != 0;
         let end = if compressed_size == 0 {
             uncompressed_size + start
         } else {
@@ -215,7 +214,6 @@ impl ImageFileReader {
                 return None;
             }
         }
-
         let extension = strings
             .get(location.get_attribute(ImageLocation::ATTRIBUTE_EXTENSION) as u32)
             .expect("expect extension string.");
