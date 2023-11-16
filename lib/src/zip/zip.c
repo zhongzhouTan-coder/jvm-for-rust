@@ -1,4 +1,5 @@
 #include <zlib.h>
+#include <string.h>
 
 int zip_inflate(void *outBuf, long long outlen, void *inBuf, long long inlen, char **pmsg)
 {
