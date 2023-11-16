@@ -114,75 +114,52 @@ impl ImageFileReader {
         let mut path = "/packages/".to_string();
         path.push_str(&package_name.replace("/", "."));
 
-        if let Some(location) = ImageFileReader::find_location(&self, path) {
-            if let Some(content) = self.get_resource(&location) {
-                let mut offset: u32 = 0;
-                let mut iter = content.chunks_exact(8);
-                while let Some(chunk) = iter.next() {
-                    let is_empty: u32 = u32::from_ne_bytes(chunk[0..4].try_into().unwrap());
-                    if is_empty == 0 {
-                        offset = u32::from_ne_bytes(chunk[4..8].try_into().unwrap());
-                        break;
-                    }
-                }
-                return self.get_strings().get(offset);
-            }
-        }
-        None
+        self.find_location(path)
+            .and_then(|loc| self.read_data(loc))
+            .and_then(|data| {
+                data.chunks_exact(8).into_iter().find_map(|bytes| {
+                    (u32::from_ne_bytes(bytes[0..4].try_into().unwrap()) == 0)
+                        .then(|| u32::from_ne_bytes(bytes[4..8].try_into().unwrap()))
+                })
+            })
+            .and_then(|offset| self.get_strings().get(offset))
+    }
+
+    fn find_location_index(&self, path: String) -> Option<(u32, u64)> {
+        self.get_attribute_offset(path.clone())
+            .and_then(|index| self.get_location_offset(index))
+            .and_then(|loc_offset| {
+                self.get_location(loc_offset).and_then(|loc| {
+                    self.verify_location(loc, path).and_then(|loc| {
+                        Some((
+                            loc_offset,
+                            loc.get_attribute(ImageLocation::ATTRIBUTE_UNCOMPRESSED),
+                        ))
+                    })
+                })
+            })
     }
 
     fn find_location(&self, path: String) -> Option<ImageLocation> {
-        let redirect_ref = Arc::clone(self.redirect_table.as_ref().unwrap());
-        let offsets_ref = Arc::clone(self.attribute_offsets.as_ref().unwrap());
-        let location_ref = Arc::clone(self.attribute_data.as_ref().unwrap());
-        if let Some(index) =
-            ImageStrings::find(path.clone(), redirect_ref, self.table_length() as u32)
-        {
-            assert!(
-                (index as usize) < offsets_ref.len(),
-                "invalid offsets index."
-            );
-            let location_offset = offsets_ref[index as usize];
-            assert!(
-                (location_offset as usize) < location_ref.len(),
-                "invalid location offset."
-            );
-            let mut attributes: [u64; 8] = [0; ImageLocation::ATTRIBUTE_COUNT as usize];
-            let mut index: usize = location_offset as usize;
-            while let Some(&byte) = location_ref.get(index) {
-                if byte == ImageLocation::ATTRIBUTE_END {
-                    break;
-                }
-                let kind = ImageLocation::attribute_kind(byte);
-                assert!(
-                    kind < ImageLocation::ATTRIBUTE_COUNT,
-                    "invalid attribute kind"
-                );
-                let len = ImageLocation::attribute_length(byte);
-                index += 1;
-                if let Some(values) = location_ref.get(index..index + len as usize) {
-                    attributes[kind as usize] = ImageLocation::attribute_value(values, len);
-                    index += len as usize;
-                } else {
-                    println!("invalid attribute value bytes.");
-                    return None;
-                }
-            }
-            let location = ImageLocation::new(attributes);
-            if self.verify_location(&location, path) {
-                return Some(location);
-            }
-        }
-        None
+        self.get_attribute_offset(path.clone())
+            .and_then(|index| self.get_location_offset(index))
+            .and_then(|loc_offset| self.get_location(loc_offset))
+            .and_then(|loc| self.verify_location(loc, path))
     }
 
-    fn get_resource(&self, location: &ImageLocation) -> Option<Vec<u8>> {
+    fn get_resource(&self, offset: u32) -> Option<Vec<u8>> {
+        self.get_location(offset)
+            .and_then(|loc| self.read_data(loc))
+    }
+
+    fn read_data(&self, location: ImageLocation) -> Option<Vec<u8>> {
         let start = location.get_attribute(ImageLocation::ATTRIBUTE_OFFSET) as usize;
         let uncompressed_size =
             location.get_attribute(ImageLocation::ATTRIBUTE_UNCOMPRESSED) as usize;
         let compressed_size = location.get_attribute(ImageLocation::ATTRIBUTE_COMPRESSED) as usize;
         assert!(self.resources.is_some(), "no resource data loaded.");
         let resource_bytes = Arc::clone(self.resources.as_ref().unwrap());
+        let is_compressed = compressed_size != 0;
         let end = if compressed_size == 0 {
             uncompressed_size + start
         } else {
@@ -192,7 +169,6 @@ impl ImageFileReader {
             end <= resource_bytes.len(),
             "invalid index access to resource bytes."
         );
-        let _data = resource_bytes[start - 64..end + 64].to_vec();
         let data = resource_bytes[start..end].to_vec();
         if compressed_size != 0 {
             return Decompressors::decompress_resource(
@@ -204,7 +180,7 @@ impl ImageFileReader {
         Some(data)
     }
 
-    fn verify_location(&self, location: &ImageLocation, path: String) -> bool {
+    fn verify_location(&self, location: ImageLocation, path: String) -> Option<ImageLocation> {
         let mut path = path;
         let strings = self.get_strings();
         let module = strings
@@ -215,7 +191,7 @@ impl ImageFileReader {
             if let Some(result) = path.strip_prefix(prefix) {
                 path = result.to_owned();
             } else {
-                return false;
+                return None;
             }
         }
         let parent = strings
@@ -226,7 +202,7 @@ impl ImageFileReader {
             if let Some(result) = path.strip_prefix(prefix) {
                 path = result.to_owned();
             } else {
-                return false;
+                return None;
             }
         }
         let base = strings
@@ -236,7 +212,7 @@ impl ImageFileReader {
             if let Some(result) = path.strip_prefix(&base) {
                 path = result.to_owned();
             } else {
-                return false;
+                return None;
             }
         }
 
@@ -248,10 +224,10 @@ impl ImageFileReader {
             if let Some(result) = path.strip_prefix(prefix) {
                 path = result.to_owned();
             } else {
-                return false;
+                return None;
             }
         }
-        path.is_empty()
+        path.is_empty().then_some(location)
     }
 
     fn index_size(&self) -> usize {
@@ -282,6 +258,52 @@ impl ImageFileReader {
             data: Some(Arc::clone(self.strings.as_ref().unwrap())),
             size: self.header.string_size(),
         }
+    }
+
+    fn get_location_offset(&self, index: u32) -> Option<u32> {
+        self.attribute_offsets
+            .as_ref()
+            .and_then(|data| data.get(index as usize).map(|value| value.clone()))
+    }
+
+    fn get_attribute_offset(&self, path: String) -> Option<u32> {
+        self.redirect_table
+            .as_ref()
+            .and_then(|data| ImageStrings::find(path, Arc::clone(data), self.table_length() as u32))
+    }
+
+    fn get_location(&self, index: u32) -> Option<ImageLocation> {
+        let attribute_data = Arc::clone(
+            self.attribute_data
+                .as_ref()
+                .expect("attribute data cannot be null."),
+        );
+        assert!(
+            (index as usize) < attribute_data.len(),
+            "invalid location offset."
+        );
+        let mut attributes: [u64; 8] = [0; ImageLocation::ATTRIBUTE_COUNT as usize];
+        let mut index = index as usize;
+        while let Some(&byte) = attribute_data.get(index) {
+            if byte == ImageLocation::ATTRIBUTE_END {
+                break;
+            }
+            let kind = ImageLocation::attribute_kind(byte);
+            assert!(
+                kind < ImageLocation::ATTRIBUTE_COUNT,
+                "invalid attribute kind"
+            );
+            let len = ImageLocation::attribute_length(byte);
+            index += 1;
+            if let Some(values) = attribute_data.get(index..index + len as usize) {
+                attributes[kind as usize] = ImageLocation::attribute_value(values, len);
+                index += len as usize;
+            } else {
+                println!("invalid attribute value bytes.");
+                return None;
+            }
+        }
+        Some(ImageLocation::new(attributes))
     }
 }
 
@@ -470,6 +492,10 @@ mod image_file {
                 assert_eq!(
                     reader.package_to_module("java/nio".to_string()),
                     Some("java.base".to_string())
+                );
+                assert_eq!(
+                    reader.package_to_module("java/lang/instrument".to_string()),
+                    Some("java.instrument".to_string())
                 );
             }
         }
