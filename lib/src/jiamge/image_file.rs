@@ -120,7 +120,7 @@ impl ImageFileReader {
                 let mut iter = content.chunks_exact(8);
                 while let Some(chunk) = iter.next() {
                     let is_empty: u32 = u32::from_ne_bytes(chunk[0..4].try_into().unwrap());
-                    if is_empty != 0 {
+                    if is_empty == 0 {
                         offset = u32::from_ne_bytes(chunk[4..8].try_into().unwrap());
                         break;
                     }
@@ -456,7 +456,7 @@ mod image_file {
     use super::ImageFileReader;
 
     #[test]
-    fn should_open_image_file() {
+    fn should_open_image_file_and_get_module_from_package() {
         if let Ok(java_home) = env::var("JAVA_HOME") {
             let name = match cfg!(windows) {
                 true => format!("{}\\lib\\modules", java_home),
@@ -465,6 +465,10 @@ mod image_file {
             if let Ok(reader) = ImageFileReader::open(name) {
                 assert_eq!(
                     reader.package_to_module("java/lang".to_string()),
+                    Some("java.base".to_string())
+                );
+                assert_eq!(
+                    reader.package_to_module("java/nio".to_string()),
                     Some("java.base".to_string())
                 );
             }
