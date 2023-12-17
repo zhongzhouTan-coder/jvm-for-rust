@@ -39,6 +39,16 @@ impl ImageFileReader {
         }
     }
 
+    pub fn close(name: &str) {
+        if let Some(readers_lock) = INSTANCE.get() {
+            let mut readers = readers_lock.lock().unwrap();
+            let value = readers.get(name);
+            if let Some(reader_ref) = value {
+                (Arc::strong_count(reader_ref) == 1).then(|| readers.remove(name));
+            }
+        }
+    }
+
     pub fn open(name: String) -> Result<Arc<ImageFileReader>, JImageError> {
         let mut readers = INSTANCE
             .get_or_init(|| {
@@ -110,7 +120,7 @@ impl ImageFileReader {
         Ok(())
     }
 
-    fn package_to_module(&self, package_name: String) -> Option<String> {
+    pub fn package_to_module(&self, package_name: String) -> Option<String> {
         let mut path = "/packages/".to_string();
         path.push_str(&package_name.replace("/", "."));
 
@@ -125,18 +135,18 @@ impl ImageFileReader {
             .and_then(|offset| self.get_strings().get(offset))
     }
 
-    fn find_location_index(&self, path: String) -> Option<(u32, u64)> {
+    pub fn find_location_index(&self, path: String) -> Option<(u32, u64)> {
         self.get_attribute_offset(path.clone())
             .and_then(|index| self.get_location_offset(index))
             .and_then(|loc_offset| {
-                self.get_location(loc_offset).and_then(|loc| {
-                    self.verify_location(loc, path).and_then(|loc| {
+                self.get_location(loc_offset)
+                    .and_then(|loc| self.verify_location(loc, path))
+                    .and_then(|loc| {
                         Some((
                             loc_offset,
                             loc.get_attribute(ImageLocation::ATTRIBUTE_UNCOMPRESSED),
                         ))
                     })
-                })
             })
     }
 
@@ -147,7 +157,7 @@ impl ImageFileReader {
             .and_then(|loc| self.verify_location(loc, path))
     }
 
-    fn get_resource(&self, offset: u32) -> Option<Vec<u8>> {
+    pub fn get_resource(&self, offset: u32) -> Option<Vec<u8>> {
         self.get_location(offset)
             .and_then(|loc| self.read_data(loc))
     }
@@ -234,7 +244,7 @@ impl ImageFileReader {
             + self.string_size() as usize
     }
 
-    fn table_length(&self) -> usize {
+    pub fn table_length(&self) -> usize {
         self.header.table_length() as usize
     }
 
@@ -250,7 +260,7 @@ impl ImageFileReader {
         std::mem::size_of::<ImageHeader>()
     }
 
-    fn get_strings(&self) -> ImageStrings {
+    pub fn get_strings(&self) -> ImageStrings {
         assert!(self.strings.is_some(), "No content of string bytes.");
         ImageStrings {
             data: Some(Arc::clone(self.strings.as_ref().unwrap())),
@@ -270,7 +280,7 @@ impl ImageFileReader {
             .and_then(|data| ImageStrings::find(path, Arc::clone(data), self.table_length() as u32))
     }
 
-    fn get_location(&self, index: u32) -> Option<ImageLocation> {
+    pub fn get_location(&self, index: u32) -> Option<ImageLocation> {
         let attribute_data = Arc::clone(
             self.attribute_data
                 .as_ref()
@@ -310,21 +320,21 @@ pub struct ImageLocation {
 }
 
 impl ImageLocation {
-    const ATTRIBUTE_END: u8 = 0;
-    const ATTRIBUTE_MODULE: u8 = 1;
-    const ATTRIBUTE_PARENT: u8 = 2;
-    const ATTRIBUTE_BASE: u8 = 3;
-    const ATTRIBUTE_EXTENSION: u8 = 4;
-    const ATTRIBUTE_OFFSET: u8 = 5;
-    const ATTRIBUTE_COMPRESSED: u8 = 6;
-    const ATTRIBUTE_UNCOMPRESSED: u8 = 7;
-    const ATTRIBUTE_COUNT: u8 = 8;
+    pub const ATTRIBUTE_END: u8 = 0;
+    pub const ATTRIBUTE_MODULE: u8 = 1;
+    pub const ATTRIBUTE_PARENT: u8 = 2;
+    pub const ATTRIBUTE_BASE: u8 = 3;
+    pub const ATTRIBUTE_EXTENSION: u8 = 4;
+    pub const ATTRIBUTE_OFFSET: u8 = 5;
+    pub const ATTRIBUTE_COMPRESSED: u8 = 6;
+    pub const ATTRIBUTE_UNCOMPRESSED: u8 = 7;
+    pub const ATTRIBUTE_COUNT: u8 = 8;
 
     fn new(attributes: [u64; ImageLocation::ATTRIBUTE_COUNT as usize]) -> Self {
         ImageLocation { attributes }
     }
 
-    fn get_attribute(&self, kind: u8) -> u64 {
+    pub fn get_attribute(&self, kind: u8) -> u64 {
         assert!(
             ImageLocation::ATTRIBUTE_END < kind && kind < ImageLocation::ATTRIBUTE_COUNT,
             "invalid attribute kind"
