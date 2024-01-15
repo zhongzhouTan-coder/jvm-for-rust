@@ -1,2 +1,2 @@
 [workspace]
-members = ["jvm", "lib"]
+members = ["jvm", "lib", "gc"]
