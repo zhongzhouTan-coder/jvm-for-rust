@@ -7,8 +7,7 @@ const DEFAULT_HEAP_SIZE: usize = 1024 * 1024;
 const WORD_SIZE: usize = 8;
 
 pub struct GlobalAllocator {
-    mmap: MemoryMap,
-
+    memory_map: MemoryMap,
     free_blocks: LinkedList<Block>,
     committed_word_size: usize,
     limit_word_size: usize,
@@ -19,9 +18,9 @@ impl GlobalAllocator {
         let max_heap_size: usize = std::env::var("MAX_HEAP_SIZE")
             .map(|s| s.parse().unwrap())
             .unwrap_or(DEFAULT_HEAP_SIZE);
-        let mmap = MemoryMap::new(max_heap_size);
+        let memory_map = MemoryMap::new(max_heap_size);
         GlobalAllocator {
-            mmap,
+            memory_map,
             free_blocks: LinkedList::new(),
             committed_word_size: 0,
             limit_word_size: max_heap_size / WORD_SIZE,

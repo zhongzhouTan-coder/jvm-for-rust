@@ -1,4 +1,5 @@
-use std::{cell::RefCell, sync::Mutex};
+use std::cell::RefCell;
+use std::sync::Mutex;
 
 use once_cell::sync::Lazy;
 
@@ -13,7 +14,10 @@ static GLOBAL_ALLOCATOR: Lazy<Mutex<GlobalAllocator>> =
     Lazy::new(|| Mutex::new(GlobalAllocator::initialize()));
 
 thread_local! {
-    static THREAD_LOCAL_ALLOCATOR: RefCell<ThreadLocalAllocator> = RefCell::new(ThreadLocalAllocator::new());
+    static THREAD_LOCAL_ALLOCATOR: RefCell<ThreadLocalAllocator> = {
+        let mutator = RefCell::new(ThreadLocalAllocator::new());
+        mutator
+    };
 }
 
 pub fn allocate(size: usize) -> Address {
