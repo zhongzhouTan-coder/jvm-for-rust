@@ -9,6 +9,7 @@ const WORD_SIZE: usize = 8;
 pub struct GlobalAllocator {
     memory_map: MemoryMap,
     free_blocks: LinkedList<Block>,
+    used_blocks: LinkedList<Block>,
     committed_word_size: usize,
     limit_word_size: usize,
 }
@@ -22,6 +23,7 @@ impl GlobalAllocator {
         GlobalAllocator {
             memory_map,
             free_blocks: LinkedList::new(),
+            used_blocks: LinkedList::new(),
             committed_word_size: 0,
             limit_word_size: max_heap_size / WORD_SIZE,
         }
@@ -46,7 +48,7 @@ impl GlobalAllocator {
     where
         I: Iterator<Item = Block>,
     {
-        todo!()
+        self.used_blocks.extend(blocks)
     }
 
     pub fn collect(&self) {
