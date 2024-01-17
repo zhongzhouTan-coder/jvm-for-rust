@@ -5,11 +5,14 @@ use once_cell::sync::Lazy;
 
 use crate::model::address::Address;
 
-use self::{global_allocator::GlobalAllocator, thread_local_allocator::ThreadLocalAllocator, overflow_allocator::OverflowAllocator};
+use self::{
+    global_allocator::GlobalAllocator, overflow_allocator::OverflowAllocator,
+    thread_local_allocator::ThreadLocalAllocator,
+};
 
 mod global_allocator;
-mod thread_local_allocator;
 mod overflow_allocator;
+mod thread_local_allocator;
 
 static GLOBAL_ALLOCATOR: Lazy<Mutex<GlobalAllocator>> =
     Lazy::new(|| Mutex::new(GlobalAllocator::initialize()));

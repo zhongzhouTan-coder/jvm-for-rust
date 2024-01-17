@@ -1,11 +1,14 @@
+use crate::align_up;
+
 use super::address::Address;
 
-pub const BLOCK_SIZE: usize = 32 * 1024;
+const BLOCK_SIZE: usize = 32 * 1024;
 pub const LINE_SIZE: usize = 128;
+const LINE_COUNT: usize = BLOCK_SIZE / LINE_SIZE;
 
 pub struct Block {
     mark: BlockMark,
-    line_mark_table: LineMarkTable,
+    line_marks: [LineMark; LINE_COUNT],
     base: Address,
 }
 
@@ -16,50 +19,58 @@ pub enum BlockMark {
     Recyclable,
 }
 
-pub struct LineMarkTable {
-    base: Address,
-}
-
 #[repr(u8)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum LineMark {
     Free,
     Live,
 }
 
 impl Block {
-    /// mark a block state to free
+    pub fn new(base: Address) -> Block {
+        Block {
+            mark: BlockMark::Free,
+            line_marks: [LineMark::Free; LINE_COUNT],
+            base,
+        }
+    }
+
     fn mark_free(&mut self) {
         self.mark = BlockMark::Free;
     }
 
-    /// mark a block state to unavailable
     fn mark_unavailable(&mut self) {
         self.mark = BlockMark::Unavailable;
     }
 
-    /// mark a block state to recyclable
     fn mark_recyclable(&mut self) {
         self.mark = BlockMark::Recyclable;
     }
 
-    /// mark a line that a specific address is reside in
-    fn mark_line(&mut self, address: Address) {
-        self.validate_address(address);
-        let line_offset = address.diff(self.base) / LINE_SIZE;
-        self.line_mark_table.mark_line(line_offset);
+    fn mark_line(&mut self, index: usize) {
+        assert!(index < LINE_COUNT, "invalid line index.");
+        self.line_marks[index] = LineMark::Live;
     }
 
-    #[inline(always)]
-    fn validate_address(&self, address: Address) {
-        assert!(
-            self.base <= address && address < self.base + BLOCK_SIZE,
-            "invalid address."
-        );
+    pub fn find_next_available_hole(&self, start: Address) -> Option<(Address, Address)> {
+        None
     }
-}
 
-impl LineMarkTable {
-    fn mark_line(&mut self, offset: usize) {
-        self.base.plus(offset).store(LineMark::Live as u8);
+    pub fn allocate(&mut self, size: usize) -> Address {
+        let lines = align_up!(size, LINE_SIZE) / LINE_SIZE;
+        let mut available_lines = 0;
+        for index in 0..LINE_COUNT {
+            if self.line_marks[index] == LineMark::Free {
+                available_lines += 1;
+                if available_lines == lines {
+                    let start = index - lines;
+                    (start..index).for_each(|i| self.mark_line(i));
+                    return self.base.plus(start * LINE_SIZE);
+                }
+            } else {
+                available_lines = 0;
+            }
+        }
+        Address::zero()
     }
 }
