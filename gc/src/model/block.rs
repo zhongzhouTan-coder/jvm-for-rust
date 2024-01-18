@@ -52,8 +52,8 @@ impl Block {
         self.line_marks[index] = LineMark::Live;
     }
 
-    pub fn find_next_available_hole(&self, start: Address) -> Option<(Address, Address)> {
-        None
+    pub fn find_next_hole(&self) -> (Address, Address) {
+        todo!("find next hole")
     }
 
     pub fn allocate(&mut self, size: usize) -> Address {
