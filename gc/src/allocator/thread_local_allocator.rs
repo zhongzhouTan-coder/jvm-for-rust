@@ -1,6 +1,6 @@
 use crate::align_up;
-use crate::model::{address::Address, block::Block};
 use crate::model::block::LINE_SIZE;
+use crate::model::{address::Address, block::Block};
 
 pub struct ThreadLocalAllocator {
     block: Option<Block>,
@@ -37,15 +37,17 @@ impl ThreadLocalAllocator {
     }
 
     fn slow_allocate(&mut self, size: usize) -> Address {
-        if let Some(block) = &mut self.block {
-            let result = block.allocate(size);
-            (self.bmp_cursor, self.bmp_limit) = block.find_next_hole();
-            return result;
+        if self.block.is_none() {
+            let block = self.require_block_from_global();
+            self.bmp_cursor = block.base_address();
+            self.bmp_limit = block.block_limit();
+            self.block = Some(block);
         }
+
         Address::zero()
     }
 
-    fn require_block_from_global(&mut self) {
+    fn require_block_from_global(&mut self) -> Block {
         todo!()
     }
 

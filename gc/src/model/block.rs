@@ -1,14 +1,20 @@
+use std::ops::{Index, IndexMut};
+
 use crate::align_up;
 
 use super::address::Address;
 
-const BLOCK_SIZE: usize = 32 * 1024;
+pub const BLOCK_SIZE: usize = 32 * 1024;
 pub const LINE_SIZE: usize = 128;
 const LINE_COUNT: usize = BLOCK_SIZE / LINE_SIZE;
 
 pub struct Block {
-    mark: BlockMark,
-    line_marks: [LineMark; LINE_COUNT],
+    block_mark: BlockMark,
+    line_marks: LineMarks,
+    base: Address,
+}
+
+pub struct LineMarks {
     base: Address,
 }
 
@@ -27,29 +33,39 @@ pub enum LineMark {
 }
 
 impl Block {
-    pub fn new(base: Address) -> Block {
+    pub fn new(base: Address, line_mark_base: Address) -> Block {
         Block {
-            mark: BlockMark::Free,
-            line_marks: [LineMark::Free; LINE_COUNT],
+            block_mark: BlockMark::Free,
+            line_marks: LineMarks::new(line_mark_base),
             base,
         }
     }
 
     fn mark_free(&mut self) {
-        self.mark = BlockMark::Free;
+        self.block_mark = BlockMark::Free;
     }
 
     fn mark_unavailable(&mut self) {
-        self.mark = BlockMark::Unavailable;
+        self.block_mark = BlockMark::Unavailable;
     }
 
     fn mark_recyclable(&mut self) {
-        self.mark = BlockMark::Recyclable;
+        self.block_mark = BlockMark::Recyclable;
     }
 
     fn mark_line(&mut self, index: usize) {
         assert!(index < LINE_COUNT, "invalid line index.");
         self.line_marks[index] = LineMark::Live;
+    }
+
+    #[inline(always)]
+    pub fn base_address(&self) -> Address {
+        self.base
+    }
+
+    #[inline(always)]
+    pub fn block_limit(&self) -> Address {
+        self.base.plus(BLOCK_SIZE)
     }
 
     pub fn find_next_hole(&self) -> (Address, Address) {
@@ -72,5 +88,33 @@ impl Block {
             }
         }
         Address::zero()
+    }
+}
+
+impl LineMarks {
+    pub fn new(base: Address) -> LineMarks {
+        LineMarks { base }
+    }
+
+    #[inline(always)]
+    pub fn mark_line(&mut self, index: usize, mark: LineMark) {
+        assert!(index < LINE_COUNT, "invalid line index.");
+        self.base.plus(index).store(mark);
+    }
+}
+
+impl Index<usize> for LineMarks {
+    type Output = LineMark;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        assert!(index < LINE_COUNT, "invalid line index.");
+        self.base.plus(index).load()
+    }
+}
+
+impl IndexMut<usize> for LineMarks {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        assert!(index < LINE_COUNT, "invalid line index.");
+        self.base.plus(index).load()
     }
 }
