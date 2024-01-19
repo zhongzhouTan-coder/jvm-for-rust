@@ -23,16 +23,9 @@ thread_local! {
     static OVERFLOW_ALLOCATOR: RefCell<OverflowAllocator> = RefCell::new(OverflowAllocator::new());
 }
 
-pub fn allocate(size: usize) -> Address {
+pub fn allocate(size: usize) -> Option<Address> {
     THREAD_LOCAL_ALLOCATOR.with(|allocator| {
         let mut allocator = allocator.borrow_mut();
         allocator.allocate(size)
-    })
-}
-
-pub fn swap() {
-    THREAD_LOCAL_ALLOCATOR.with(|allocator| {
-        let mut allocator = allocator.borrow_mut();
-        allocator.return_blocks();
     })
 }

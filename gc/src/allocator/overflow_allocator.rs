@@ -30,7 +30,7 @@ impl Drop for OverflowAllocator {
     fn drop(&mut self) {
         if let Some(block) = self.overflow_block.take() {
             let mut global_allocator = GLOBAL_ALLOCATOR.lock().unwrap();
-            global_allocator.return_blocks(std::iter::once(block));
+            global_allocator.return_blocks(vec![block].into_iter(), vec![].into_iter());
         }
     }
 }

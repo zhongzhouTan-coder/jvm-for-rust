@@ -51,11 +51,12 @@ impl GlobalAllocator {
         panic!("out of memory");
     }
 
-    pub fn return_blocks<I>(&mut self, blocks: I)
+    pub fn return_blocks<I>(&mut self, free_blocks: I, used_blocks: I)
     where
         I: Iterator<Item = Block>,
     {
-        self.used_blocks.extend(blocks)
+        self.free_blocks.extend(free_blocks);
+        self.used_blocks.extend(used_blocks);
     }
 
     pub fn collect(&self) {

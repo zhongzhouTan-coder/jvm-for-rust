@@ -19,6 +19,7 @@ pub struct LineMarks {
 }
 
 #[repr(u8)]
+#[derive(PartialEq)]
 pub enum BlockMark {
     Free,
     Unavailable,
@@ -54,8 +55,32 @@ impl Block {
     }
 
     fn mark_line(&mut self, index: usize) {
-        assert!(index < LINE_COUNT, "invalid line index.");
         self.line_marks[index] = LineMark::Live;
+    }
+
+    #[inline(always)]
+    pub fn is_free(&self) -> bool {
+        self.block_mark == BlockMark::Free
+    }
+
+    #[inline(always)]
+    pub fn is_recyclable(&self) -> bool {
+        self.block_mark == BlockMark::Recyclable
+    }
+
+    #[inline(always)]
+    pub fn is_unavailable(&self) -> bool {
+        self.block_mark == BlockMark::Unavailable
+    }
+
+    pub fn mark_lines(&mut self, start: Address, end: Address) {
+        assert!(
+            start > self.base && end <= self.base.plus(BLOCK_SIZE),
+            "invalid address range."
+        );
+        let start_index = start.diff(self.base) / LINE_SIZE;
+        let end_index = end.diff(self.base) / LINE_SIZE;
+        (start_index..end_index).for_each(|i| self.mark_line(i));
     }
 
     #[inline(always)]
@@ -68,11 +93,11 @@ impl Block {
         self.base.plus(BLOCK_SIZE)
     }
 
-    pub fn find_next_hole(&self) -> (Address, Address) {
+    pub fn find_next_hole(&self) -> Option<(Address, Address)> {
         todo!("find next hole")
     }
 
-    pub fn allocate(&mut self, size: usize) -> Address {
+    pub fn allocate(&mut self, size: usize) -> Option<Address> {
         let lines = align_up!(size, LINE_SIZE) / LINE_SIZE;
         let mut available_lines = 0;
         for index in 0..LINE_COUNT {
@@ -81,13 +106,13 @@ impl Block {
                 if available_lines == lines {
                     let start = index - lines;
                     (start..index).for_each(|i| self.mark_line(i));
-                    return self.base.plus(start * LINE_SIZE);
+                    return Some(self.base.plus(start * LINE_SIZE));
                 }
             } else {
                 available_lines = 0;
             }
         }
-        Address::zero()
+        None
     }
 }
 
