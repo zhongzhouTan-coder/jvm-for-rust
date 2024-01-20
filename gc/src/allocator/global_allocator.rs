@@ -1,21 +1,19 @@
 use std::collections::LinkedList;
 
 use crate::align_up;
+use crate::model::block::Block;
 use crate::model::block::{BLOCK_SIZE, LINE_SIZE};
 use crate::model::line_map::LineMap;
-use crate::model::{address::Address, block::Block};
 use crate::utils::mmap::MemoryMap;
 
 const DEFAULT_HEAP_SIZE: usize = 1024 * 1024;
-const WORD_SIZE: usize = 8;
 
 pub struct GlobalAllocator {
     memory_map: MemoryMap,
-    free_blocks: Vec<Block>,
-    used_blocks: Vec<Block>,
+    free_blocks: LinkedList<Block>,
+    used_blocks: LinkedList<Block>,
     line_map: LineMap,
-    committed_word_size: usize,
-    limit_word_size: usize,
+    total_blocks: usize,
 }
 
 impl GlobalAllocator {
@@ -28,24 +26,23 @@ impl GlobalAllocator {
         let line_map = LineMap::new(heap_size / LINE_SIZE);
         GlobalAllocator {
             memory_map,
-            free_blocks: Vec::new(),
-            used_blocks: Vec::new(),
+            free_blocks: LinkedList::new(),
+            used_blocks: LinkedList::new(),
             line_map,
-            committed_word_size: 0,
-            limit_word_size: heap_size / WORD_SIZE,
+            total_blocks: 0,
         }
     }
 
     pub fn require_block(&mut self) -> Block {
-        if let Some(block) = self.free_blocks.pop() {
+        if let Some(block) = self.free_blocks.pop_front() {
             return block;
         };
-        self.require_memory_from_system();
-        if let Some(block) = self.free_blocks.pop() {
+        self.require_block_from_system();
+        if let Some(block) = self.free_blocks.pop_front() {
             return block;
         };
         self.collect();
-        if let Some(block) = self.free_blocks.pop() {
+        if let Some(block) = self.free_blocks.pop_front() {
             return block;
         };
         panic!("out of memory");
@@ -63,13 +60,15 @@ impl GlobalAllocator {
         todo!()
     }
 
-    pub fn mark(obj_ref: Address) {
-        todo!()
+    fn require_block_from_system(&mut self) {
+        if let Some(address) = self.memory_map.allocate_memory(BLOCK_SIZE) {
+            self.total_blocks += 1;
+            let index = self.total_blocks - 1;
+            let line_mark = self.line_map.block_line_marks(index);
+            let block = Block::new(address, line_mark);
+            self.free_blocks.push_back(block);
+        } else {
+            panic!("out of memory");
+        }
     }
-
-    pub fn sweep() {
-        todo!()
-    }
-
-    fn require_memory_from_system(&self) {}
 }

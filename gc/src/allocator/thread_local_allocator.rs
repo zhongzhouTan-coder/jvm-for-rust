@@ -83,30 +83,22 @@ impl ThreadLocalAllocator {
         GLOBAL_ALLOCATOR.lock().unwrap().require_block()
     }
 
-    pub fn return_free_blocks(&mut self) {
+    pub fn return_free_blocks_to_global(&mut self) {
         let mut free_blocks: LinkedList<Block> = LinkedList::new();
-        let mut recyclable_blocks: LinkedList<Block> = LinkedList::new();
-        let mut unavailable_blocks: LinkedList<Block> = LinkedList::new();
-        while let Some(block) = self.recyclable_blocks.pop_front() {
+        let mut all_blocks: LinkedList<Block> = LinkedList::new();
+        all_blocks.append(&mut self.recyclable_blocks);
+        all_blocks.append(&mut self.unavailable_blocks);
+        for block in all_blocks.into_iter() {
             if block.is_free() {
                 free_blocks.push_back(block);
             } else if block.is_recyclable() {
-                recyclable_blocks.push_back(block);
+                self.recyclable_blocks.push_back(block);
+            } else if block.is_unavailable() {
+                self.unavailable_blocks.push_back(block);
             } else {
-                unavailable_blocks.push_back(block);
+                panic!("invalid block mark.");
             }
         }
-        while let Some(block) = self.unavailable_blocks.pop_front() {
-            if block.is_free() {
-                free_blocks.push_back(block);
-            } else if block.is_recyclable() {
-                recyclable_blocks.push_back(block);
-            } else {
-                unavailable_blocks.push_back(block);
-            }
-        }
-        self.recyclable_blocks = recyclable_blocks;
-        self.unavailable_blocks = unavailable_blocks;
         GLOBAL_ALLOCATOR
             .lock()
             .unwrap()

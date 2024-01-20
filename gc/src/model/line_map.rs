@@ -1,6 +1,6 @@
-use std::mem::size_of;
+use std::{mem::size_of, ops::Add};
 
-use super::address::Address;
+use super::{address::Address, block::LINE_SIZE};
 
 pub struct LineMap {
     base: Address,
@@ -14,6 +14,10 @@ impl LineMap {
             base: Address::new(base as usize),
             len: line_size,
         }
+    }
+
+    pub fn block_line_marks(&self, index: usize) -> Address {
+        self.base.add(index * size_of::<u8>() * LINE_SIZE)
     }
 }
 
